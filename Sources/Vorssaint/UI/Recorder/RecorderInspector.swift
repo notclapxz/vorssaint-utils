@@ -47,6 +47,10 @@ struct RecorderInspector: View {
                         lookSection
                         Divider().opacity(0.35)
                         backgroundSection
+                        if model.hasCamera {
+                            Divider().opacity(0.35)
+                            cameraSection
+                        }
                     case .pointer:
                         if model.hasPointerTrack {
                             pointerSection
@@ -472,6 +476,17 @@ struct RecorderInspector: View {
     /// Nine places instead of a drag: it reads at a glance, needs no gesture
     /// on the picture, and covers what people actually do with a caption.
     private func anchorGrid(_ overlay: RecorderTextOverlay) -> some View {
+        anchorGrid(selected: overlay.anchor) { anchor in
+            model.updateSelectedText { $0.anchor = anchor }
+            model.commitZoomEdit()
+        }
+    }
+
+    /// The same nine squares for anything that is placed rather than dragged.
+    /// The caption and the camera share it because they share the reasoning.
+    private func anchorGrid(selected: RecorderTextOverlay.Anchor,
+                            onSelect: @escaping (RecorderTextOverlay.Anchor) -> Void)
+    -> some View {
         let rows: [[RecorderTextOverlay.Anchor]] = [
             [.topLeading, .top, .topTrailing],
             [.leading, .center, .trailing],
@@ -482,18 +497,95 @@ struct RecorderInspector: View {
                 HStack(spacing: 4) {
                     ForEach(rows[row], id: \.rawValue) { anchor in
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(overlay.anchor == anchor
+                            .fill(selected == anchor
                                   ? Color.accentColor.opacity(0.85)
                                   : Color.white.opacity(0.08))
                             .frame(height: 20)
-                            .onTapGesture {
-                                model.updateSelectedText { $0.anchor = anchor }
-                                model.commitZoomEdit()
-                            }
+                            .onTapGesture { onSelect(anchor) }
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Camera
+
+    /// Shown only for a recording that actually carried a camera. Where it
+    /// sits and how big it is are the two things people change about a face in
+    /// the corner, and both are decided here rather than by aiming at the
+    /// picture: the placement then survives a change of aspect ratio.
+    private var cameraSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle(strings.cameraTrackLabel)
+            Toggle(strings.cameraShowToggle, isOn: cameraVisibleBinding)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+            if model.document.camera.visible {
+                Picker(strings.shapeLabel, selection: cameraShapeBinding) {
+                    Text(strings.cameraShapeCircle)
+                        .tag(RecorderCameraOverlay.Shape.circle.rawValue)
+                    Text(strings.cameraShapeRectangle)
+                        .tag(RecorderCameraOverlay.Shape.rectangle.rawValue)
+                }
+                .pickerStyle(.menu)
+                // Only offered when there is a movement to replay. Turning it
+                // off is what hands the placement over, so size and place are
+                // hidden while the recording still owns them: two controls
+                // that quietly do nothing are worse than none.
+                if model.hasCameraTrack {
+                    Toggle(strings.cameraFollowToggle, isOn: cameraFollowsBinding)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                }
+                if !followsRecording {
+                    valueSlider(
+                        title: strings.pointerSizeLabel,
+                        value: model.document.camera.size,
+                        range: RecorderCameraOverlay.sizeRange,
+                        format: "%.0f%%",
+                        scale: 100,
+                        onChange: { value in updateCamera { $0.size = value } },
+                        onReset: {
+                            updateCamera { $0.size = RecorderCameraOverlay.defaultSize }
+                        })
+                    anchorGrid(selected: model.document.camera.anchor) { anchor in
+                        updateCamera { $0.anchor = anchor }
+                    }
+                }
+            }
+        }
+    }
+
+    private func updateCamera(_ change: (inout RecorderCameraOverlay) -> Void) {
+        var next = model.document
+        change(&next.camera)
+        model.document = next
+    }
+
+    /// A recording with no movement to replay is placed by hand whatever the
+    /// document happens to say, so the controls are never hidden behind a
+    /// switch that could not do anything.
+    private var followsRecording: Bool {
+        model.hasCameraTrack && model.document.camera.followsRecording
+    }
+
+    private var cameraFollowsBinding: Binding<Bool> {
+        Binding(get: { followsRecording },
+                set: { newValue in updateCamera { $0.followsRecording = newValue } })
+    }
+
+    private var cameraVisibleBinding: Binding<Bool> {
+        Binding(get: { model.document.camera.visible },
+                set: { newValue in updateCamera { $0.visible = newValue } })
+    }
+
+    private var cameraShapeBinding: Binding<String> {
+        Binding(get: { model.document.camera.shape.rawValue },
+                set: { newValue in
+                    guard let shape = RecorderCameraOverlay.Shape(rawValue: newValue)
+                    else { return }
+                    updateCamera { $0.shape = shape }
+                })
     }
 
     /// A slider that says what it is set to and goes back to its default on a

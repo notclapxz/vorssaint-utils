@@ -18,12 +18,18 @@ extension RecorderComposer {
     /// alternative, a composition renderScale, is rejected outright by the
     /// asset reader, and scaling afterwards would blur a background that was
     /// drawn sharp.
+    /// `cameraSize` is the natural size of the camera track, and nil for a
+    /// recording that never carried one. It is what decides whether the camera
+    /// is drawn at all, so a document remembering a placement from an earlier
+    /// recording cannot conjure a face onto one without a camera file.
     static func makePlan(document: RecorderEditDocument,
                          track: RecorderPointerTrack,
                          sourceSize: CGSize,
                          frameRate: Int,
                          duration: Double,
-                         outputScale: CGFloat = 1) -> Plan? {
+                         outputScale: CGFloat = 1,
+                         cameraSize: CGSize? = nil,
+                         cameraTrack: RecorderCameraTrack = RecorderCameraTrack()) -> Plan? {
         guard sourceSize.width > 0, sourceSize.height > 0, duration > 0 else { return nil }
 
         let style = document.resolvedBackdrop
@@ -51,8 +57,17 @@ extension RecorderComposer {
         let hasCuts = !document.cuts.isEmpty
         let texts = RecorderTextOverlay.normalized(document.texts, duration: duration)
         let blurs = RecorderBlurRegion.normalized(document.blurs, duration: duration)
+        let cameraTrackSize = cameraSize.flatMap {
+            $0.width > 0 && $0.height > 0 ? $0 : nil
+        }
+        let camera = (cameraTrackSize != nil && document.camera.visible)
+            ? document.camera.sanitized
+            : nil
+        // A recording with a camera track always needs a plan, even with the
+        // camera turned off: without one nothing composes the two video
+        // tracks, and the player would stack them however it liked.
         guard showsPointer || !segments.isEmpty || needsCanvas || hasCuts || !texts.isEmpty
-            || !blurs.isEmpty
+            || !blurs.isEmpty || cameraTrackSize != nil
         else { return nil }
 
         // Everything the pointer track knows is in the RECORDING's own time,
@@ -211,6 +226,28 @@ extension RecorderComposer {
         let mask = (needsCanvas && plate != nil)
             ? cardMask(canvas: canvas, card: card, corner: corner)
             : nil
+        // Where the face goes, frame by frame. A recording whose viewer was
+        // dragged replays that drag; one placed by hand in the editor holds
+        // the single place it was given, which is the same list with one entry.
+        var cameraRects: [CGRect] = []
+        if let camera {
+            let followed = camera.followsRecording
+                ? cameraTrack.sanitized(duration: duration)
+                : RecorderCameraTrack()
+            if followed.isEmpty {
+                cameraRects = [camera.rect(
+                    in: card,
+                    cameraAspect: cameraTrackSize.map { $0.width / $0.height } ?? 16.0 / 9.0)]
+            } else {
+                cameraRects = (0..<frames).map { index in
+                    guard let tracked = followed.rect(at: sourceTimes[index]) else {
+                        return .zero
+                    }
+                    return RecorderCameraOverlay.rect(fromTracked: tracked, in: card)
+                }
+            }
+        }
+        let cameraRect = cameraRects.first
 
         return Plan(sourceSize: RecorderSupport.evenSize(sourceSize),
                     canvasSize: canvas,
@@ -243,7 +280,11 @@ extension RecorderComposer {
                     texts: texts,
                     textOpacity: textOpacity,
                     blurs: blurs,
-                    blurCovers: blurCovers)
+                    blurCovers: blurCovers,
+                    cameraRects: cameraRects,
+                    cameraMask: cameraRect.flatMap {
+                        cameraMask(size: $0.size, shape: camera?.shape ?? .rectangle)
+                    })
     }
 
     // MARK: - Plate
@@ -368,6 +409,44 @@ extension RecorderComposer {
             kCGImageSourceThumbnailMaxPixelSize: 4096,
             kCGImageSourceCreateThumbnailWithTransform: true,
         ] as CFDictionary)
+    }
+
+    /// The camera's shape alone, drawn once at its own size with its origin at
+    /// zero: a face that moves during the recording is the same shape in a
+    /// different place, so the mask is built once and carried, never redrawn.
+    ///
+    /// A circle for a talking head, a rounded rectangle otherwise: a
+    /// hard-cornered box over a recording reads as a mistake, not a choice.
+    private static func cameraMask(size: CGSize,
+                                   shape: RecorderCameraOverlay.Shape) -> CIImage? {
+        let width = Int(size.width.rounded())
+        let height = Int(size.height.rounded())
+        guard width >= 1, height >= 1,
+              let space = CGColorSpace(name: CGColorSpace.linearGray),
+              let context = CGContext(data: nil,
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: 0,
+                                      space: space,
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { return nil }
+        let bounds = CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        context.fill(bounds)
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        switch shape {
+        case .circle:
+            context.addEllipse(in: bounds)
+        case .rectangle:
+            let corner = min(bounds.width, bounds.height) * 0.12
+            context.addPath(CGPath(roundedRect: bounds,
+                                   cornerWidth: corner,
+                                   cornerHeight: corner,
+                                   transform: nil))
+        }
+        context.fillPath()
+        return context.makeImage().map { CIImage(cgImage: $0) }
     }
 
     /// White where the recording belongs, black everywhere else.

@@ -48,6 +48,10 @@ struct RecorderEditDocument: Codable, Equatable {
     var keepsMicrophone: Bool
     var systemAudioGain: Double
     var microphoneGain: Double
+    /// Where the camera sits over the picture, for a recording that carried
+    /// one. A recording with no camera file keeps the field and ignores it:
+    /// what decides whether a face is drawn is the file, never this.
+    var camera: RecorderCameraOverlay
 
     init(trimStart: Double = 0,
          trimEnd: Double = 0,
@@ -71,7 +75,8 @@ struct RecorderEditDocument: Codable, Equatable {
          blurs: [RecorderBlurRegion] = [],
          keepsMicrophone: Bool = true,
          systemAudioGain: Double = 1,
-         microphoneGain: Double = 1) {
+         microphoneGain: Double = 1,
+         camera: RecorderCameraOverlay = RecorderCameraOverlay()) {
         self.trimStart = trimStart
         self.trimEnd = trimEnd
         self.quality = quality
@@ -95,6 +100,7 @@ struct RecorderEditDocument: Codable, Equatable {
         self.keepsMicrophone = keepsMicrophone
         self.systemAudioGain = systemAudioGain
         self.microphoneGain = microphoneGain
+        self.camera = camera
     }
 
     /// A document written before these fields existed still opens: every one
@@ -129,6 +135,8 @@ struct RecorderEditDocument: Codable, Equatable {
         keepsMicrophone = try container.decodeIfPresent(Bool.self, forKey: .keepsMicrophone) ?? true
         systemAudioGain = try container.decodeIfPresent(Double.self, forKey: .systemAudioGain) ?? 1
         microphoneGain = try container.decodeIfPresent(Double.self, forKey: .microphoneGain) ?? 1
+        camera = try container.decodeIfPresent(RecorderCameraOverlay.self, forKey: .camera)
+            ?? RecorderCameraOverlay()
     }
 
     // MARK: - Timeline
@@ -268,6 +276,7 @@ struct RecorderEditDocument: Codable, Equatable {
             || cuts != other.cuts
             || texts != other.texts
             || blurs != other.blurs
+            || camera != other.camera
     }
 
     /// Whether the finished video would run differently, which is what forces
@@ -291,6 +300,9 @@ struct RecorderEditDocument: Codable, Equatable {
         return trim.start > 0.01 || trim.end < duration - 0.01 || !keepsSystemAudio
             || !keepsMicrophone || systemAudioGain != 1 || microphoneGain != 1
             || !cuts.isEmpty || !zoomSegments.isEmpty || !texts.isEmpty || !blurs.isEmpty
+            // Only a camera the person moved counts: one sitting where every
+            // recording puts it is not an edit worth warning about.
+            || camera != RecorderCameraOverlay()
     }
 
     /// A damaged or hand-edited document can never wedge the editor: every
@@ -316,6 +328,7 @@ struct RecorderEditDocument: Codable, Equatable {
                                                             duration: duration)
         document.texts = RecorderTextOverlay.normalized(texts, duration: duration)
         document.blurs = RecorderBlurRegion.normalized(blurs, duration: duration)
+        document.camera = camera.sanitized
         return document
     }
 

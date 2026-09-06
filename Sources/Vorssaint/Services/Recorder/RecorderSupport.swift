@@ -212,6 +212,32 @@ final class RecorderPauseClock {
     }
 }
 
+/// The single zero every writer of one recording re-times against.
+///
+/// The screen and the camera are written by two writers into two files, and
+/// files that disagree about where zero is play the face a moment ahead of, or
+/// behind, what it is reacting to. The first sample of any source claims the
+/// zero; every source after that is measured from the same one. It exists only
+/// for the lifetime of one recording, like the pause clock it travels with.
+final class RecorderTimeOrigin: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Double?
+
+    /// The zero for this recording, claimed by this sample when nothing has
+    /// claimed one yet. Nil only for a sample whose time is not a number.
+    func resolve(firstSampleAt seconds: Double) -> Double? {
+        guard seconds.isFinite else { return nil }
+        return lock.withLock {
+            if let stored { return stored }
+            stored = seconds
+            return seconds
+        }
+    }
+
+    /// The zero if a source has already claimed one, without claiming it.
+    var seconds: Double? { lock.withLock { stored } }
+}
+
 /// Pure policy and geometry for the screen recorder: everything that can be
 /// decided without a stream, a writer or a window, so it can be reasoned about
 /// and tested on its own.
@@ -567,6 +593,16 @@ enum RecorderSupport {
     /// track and the edit live together so an edit can always be redone from
     /// the original pixels instead of from an already rendered result.
     static let takeVideoName = "take.mov"
+    /// The camera, kept beside the screen instead of burnt into it, so where
+    /// it sits and how big it is stay editable after the recording ends.
+    static let takeCameraName = "camera.mov"
+    /// Where the camera viewer was dragged to while recording, replayed by the
+    /// editor so the movement survives the recording that produced it.
+    static let takeCameraTrackName = "camera-track.json"
+    /// What a camera actually delivers. A screen recorded at 60 does not make
+    /// a webcam give more than 30, and claiming otherwise only misleads the
+    /// encoder about the file it is being handed.
+    static let cameraFrameRate = 30
     static let takePointerName = "pointer.bin"
     static let takeTypingName = "typing.json"
     static let takeEditName = "edit.json"

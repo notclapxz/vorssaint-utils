@@ -58,6 +58,27 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     private var previewTask: Task<Void, Never>?
     private var compositionTask: Task<Void, Never>?
     private lazy var sourceAsset = AVURLAsset(url: take.videoURL)
+    /// The camera beside the master, for a recording that carried one. Its
+    /// existence is the whole test: no file, no camera controls, nothing to
+    /// compose.
+    private lazy var cameraAsset: AVURLAsset? = {
+        FileManager.default.fileExists(atPath: take.cameraURL.path)
+            ? AVURLAsset(url: take.cameraURL)
+            : nil
+    }()
+    private var screenTrackID = kCMPersistentTrackID_Invalid
+    private var cameraTrackID: CMPersistentTrackID?
+    /// The camera's own picture size, resolved with the composition. The
+    /// inspector shows its section only once this exists, so it has to be
+    /// published: it is settled asynchronously, long after the panel is built.
+    @Published private(set) var cameraSize: CGSize?
+    /// Where the viewer was dragged to while recording, replayed unless the
+    /// person places the camera by hand.
+    private var cameraTrack = RecorderCameraTrack()
+    var hasCamera: Bool { cameraSize != nil }
+    /// Whether the viewer's movement was recorded, which is what makes the
+    /// follow switch worth showing at all.
+    var hasCameraTrack: Bool { !cameraTrack.isEmpty }
     /// How long the finished video is, which is what the transport shows.
     @Published private(set) var outputDuration: Double = 0
     private(set) var sourceSize: CGSize = .zero
@@ -102,6 +123,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
         player.isMuted = false
         pointerTrack = RecorderPointerTrack.decoded(try? Data(contentsOf: take.pointerURL))
+        cameraTrack = RecorderCameraTrack.decoded(try? Data(contentsOf: take.cameraTrackURL))
         typingTrack = RecorderTypingTrack.decoded(try? Data(contentsOf: take.typingURL))
         loadEditPresets()
         loadBackdropPresets()
@@ -154,14 +176,19 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         guard duration > 0 else { return }
         let ranges = document.keptRanges(duration: duration)
         let asset = sourceAsset
+        let cameraAsset = cameraAsset
         compositionTask = Task { @MainActor [weak self] in
             guard let result = await RecorderComposition.build(from: asset,
+                                                               cameraAsset: cameraAsset,
                                                                ranges: ranges,
                                                                includesAudio: true),
                   let self, !Task.isCancelled
             else { return }
             let item = AVPlayerItem(asset: result.asset)
             self.audioTrackIDs = result.audioTrackIDs
+            self.screenTrackID = result.videoTrackID
+            self.cameraTrackID = result.cameraTrackID
+            self.cameraSize = result.cameraSize
             item.audioMix = RecorderComposition.audioMix(trackIDs: result.audioTrackIDs,
                                                          document: self.document)
             self.player.replaceCurrentItem(with: item)
@@ -377,6 +404,8 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         let sourceSize = sourceSize
         let frameRate = sourceFrameRate
         let duration = duration
+        let cameraSize = cameraSize
+        let cameraTrack = cameraTrack
         previewTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 120_000_000)
             guard !Task.isCancelled, let self, let item = self.player.currentItem else { return }
@@ -384,7 +413,9 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
                                                        track: track,
                                                        sourceSize: sourceSize,
                                                        frameRate: frameRate,
-                                                       duration: duration) else {
+                                                       duration: duration,
+                                                       cameraSize: cameraSize,
+                                                       cameraTrack: cameraTrack) else {
                 item.videoComposition = nil
                 return
             }
@@ -400,9 +431,22 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
                 frameRate: frameRate,
                 composer: composer,
                 sourceSize: sourceSize,
-                outputSize: composer.canvasSize)
+                outputSize: composer.canvasSize,
+                screenTrackID: self.screenTrackID,
+                cameraTrackID: self.cameraTrackID)
             guard !Task.isCancelled else { return }
             item.videoComposition = composition
+            // Our own compositor does not necessarily redraw the frame already
+            // on screen when the composition is swapped, so a paused editor
+            // would keep showing the camera where it used to be while every
+            // control said otherwise. Asking for the same instant again costs
+            // nothing and always redraws.
+            if self.cameraTrackID != nil, !self.isPlaying {
+                let now = self.player.currentTime()
+                await self.player.seek(to: now,
+                                       toleranceBefore: .zero,
+                                       toleranceAfter: .zero)
+            }
         }
     }
 

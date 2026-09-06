@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Screen recordings can include your camera, chosen alongside Mac sound and the microphone while you pick the area. The camera is recorded beside the screen instead of being burnt into it, so where it sits, how big it is and whether it appears at all stay yours to change afterwards.
+- The camera viewer can be dragged while you record, and the finished video follows it: moving your face out of the way of what you are demonstrating is kept, replayed in the editor, and can be taken over there at any time.
+- The recording editor places the camera in any of nine spots, at a size you choose, as a circle or a rectangle, and can leave it out of the video entirely.
+
 ## [3.3.3-beta.4] - 2026-09-03
 
 ### Summary

@@ -59,6 +59,15 @@ final class RecorderComposer {
         /// Areas kept unreadable and, for each frame, whether each one is on.
         let blurs: [RecorderBlurRegion]
         let blurCovers: [[Bool]]
+        /// Where the camera goes in the finished picture: one entry per frame
+        /// for a viewer that was dragged while recording, a single entry for
+        /// one placed by hand, and empty for a recording with no camera or
+        /// whose camera the person turned off.
+        let cameraRects: [CGRect]
+        /// Its shape at its own size, with the origin at zero. A camera that
+        /// moves is the same shape somewhere else, so the mask is drawn once
+        /// and carried to each place rather than rebuilt per frame.
+        let cameraMask: CIImage?
     }
 
     private let plan: Plan
@@ -83,6 +92,15 @@ final class RecorderComposer {
     // MARK: - Rendering
 
     func render(_ source: CIImage, at seconds: Double) -> CIImage {
+        render(source, camera: nil, at: seconds)
+    }
+
+    /// `camera` is the camera's own frame at this instant, for a recording
+    /// that carried one. It goes on after the background and before the text:
+    /// it belongs to the finished picture rather than to the recorded screen,
+    /// so a zoom must not drag it around and a caption must be able to sit
+    /// over it.
+    func render(_ source: CIImage, camera: CIImage?, at seconds: Double) -> CIImage {
         let index = frameIndex(for: seconds)
         var content = source.cropped(to: CGRect(origin: .zero, size: plan.sourceSize))
         content = blurred(content, index: index)
@@ -106,8 +124,56 @@ final class RecorderComposer {
         } else if let plate = plan.plate {
             content = content.composited(over: plate)
         }
+        if let camera {
+            content = drawCamera(on: content, frame: camera, index: index)
+        }
         content = drawTexts(on: content, index: index)
         return content.cropped(to: CGRect(origin: .zero, size: plan.canvasSize))
+    }
+
+    /// The camera fills its place the way a portrait fills a frame: scaled to
+    /// cover and centred, so a wide camera in a circle shows the middle of the
+    /// picture instead of a squashed face between two bars.
+    ///
+    /// The place is looked up per frame, which is what replays a viewer that
+    /// was dragged mid recording. The mask travels with it: outside its own
+    /// extent a mask is transparent, so everywhere the camera is not is simply
+    /// the picture underneath.
+    private func drawCamera(on content: CIImage, frame: CIImage, index: Int) -> CIImage {
+        guard let rect = cameraRect(at: index), let mask = plan.cameraMask,
+              rect.width >= 1, rect.height >= 1 else { return content }
+        let source = frame.extent
+        guard source.width >= 1, source.height >= 1 else { return content }
+        let scale = max(rect.width / source.width, rect.height / source.height)
+        let width = source.width * scale
+        let height = source.height * scale
+        let placed = frame
+            .transformed(by: CGAffineTransform(translationX: -source.minX, y: -source.minY))
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .transformed(by: CGAffineTransform(translationX: rect.midX - width / 2,
+                                               y: rect.midY - height / 2))
+
+        let extent = mask.extent
+        guard extent.width >= 1, extent.height >= 1 else { return content }
+        let placedMask = mask
+            .transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
+            .transformed(by: CGAffineTransform(scaleX: rect.width / extent.width,
+                                               y: rect.height / extent.height))
+            .transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
+
+        return placed.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: content,
+            kCIInputMaskImageKey: placedMask,
+        ])
+    }
+
+    /// One place per frame while the camera follows the recording; the single
+    /// place it was given otherwise.
+    private func cameraRect(at index: Int) -> CGRect? {
+        guard !plan.cameraRects.isEmpty else { return nil }
+        if plan.cameraRects.count == 1 { return plan.cameraRects[0] }
+        guard plan.cameraRects.indices.contains(index) else { return plan.cameraRects.last }
+        return plan.cameraRects[index]
     }
 
     /// Text sits on top of everything, including the background and the zoom:
@@ -289,13 +355,39 @@ final class RecorderComposer {
     /// The master is written at a variable rate on purpose, so a still screen
     /// costs nothing while recording; the steady rate is imposed here instead,
     /// in the single decode pass the export already needs.
+    /// A recording carrying a camera goes through a compositor of our own,
+    /// because the stock Core Image composition hands over one source image
+    /// and a camera is a second one. Everything else keeps the stock path: the
+    /// custom compositor is reached only by the recordings that need it.
     static func videoComposition(track: AVAssetTrack,
                                  asset: AVAsset,
                                  duration: CMTime,
                                  frameRate: Int,
                                  composer: RecorderComposer?,
                                  sourceSize: CGSize,
-                                 outputSize: CGSize) async -> AVMutableVideoComposition {
+                                 outputSize: CGSize,
+                                 screenTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
+                                 cameraTrackID: CMPersistentTrackID? = nil)
+    async -> AVMutableVideoComposition {
+        if let composer, let cameraTrackID, screenTrackID != kCMPersistentTrackID_Invalid {
+            let composition = AVMutableVideoComposition()
+            composition.customVideoCompositorClass = RecorderCameraCompositor.self
+            composition.frameDuration = CMTime(value: 1,
+                                               timescale: CMTimeScale(max(1, frameRate)))
+            composition.renderSize = composer.canvasSize
+            // The instruction has to span the composition it is given, which
+            // is the recording AFTER its cuts, not the length the caller
+            // knows. A short instruction leaves the tail uncomposed.
+            let span = (try? await asset.load(.duration)) ?? duration
+            composition.instructions = [
+                RecorderCameraCompositionInstruction(
+                    timeRange: CMTimeRange(start: .zero, duration: span),
+                    composer: composer,
+                    screenTrackID: screenTrackID,
+                    cameraTrackID: cameraTrackID),
+            ]
+            return composition
+        }
         if let composer {
             // The handler may run concurrently; this composer only reads
             // immutable state while rendering each frame.

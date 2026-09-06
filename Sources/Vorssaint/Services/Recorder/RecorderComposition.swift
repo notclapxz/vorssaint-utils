@@ -62,6 +62,14 @@ enum RecorderComposition {
     struct Result {
         let asset: AVMutableComposition
         let audioTrackIDs: [RecorderAudioSource: CMPersistentTrackID]
+        /// The screen, and the camera when the recording carried one. Two
+        /// video tracks in one composition have to be told apart by name: the
+        /// compositor asks for each of them by ID.
+        let videoTrackID: CMPersistentTrackID
+        let cameraTrackID: CMPersistentTrackID?
+        /// The camera's own picture size, which is what decides the shape of
+        /// the space it is drawn into.
+        let cameraSize: CGSize?
         let duration: CMTime
     }
 
@@ -90,7 +98,12 @@ enum RecorderComposition {
         return mix
     }
 
+    /// `cameraAsset` is the camera file beside the recording, when there is
+    /// one. It is cut by the same ranges as the screen, which is the whole
+    /// reason both were written against one clock: a cut in the middle takes
+    /// the same moment out of the face as out of the screen.
     static func build(from asset: AVAsset,
+                      cameraAsset: AVAsset? = nil,
                       ranges: [ClosedRange<Double>],
                       includesAudio: Bool) async -> Result? {
         guard !ranges.isEmpty else { return nil }
@@ -100,6 +113,25 @@ enum RecorderComposition {
                                                       preferredTrackID: kCMPersistentTrackID_Invalid)
         else { return nil }
         video.preferredTransform = (try? await sourceVideo.load(.preferredTransform)) ?? .identity
+
+        var camera: (from: AVAssetTrack, sourceRange: CMTimeRange,
+                     to: AVMutableCompositionTrack)?
+        var cameraSize: CGSize?
+        if let cameraAsset,
+           let sourceCamera = try? await cameraAsset.loadTracks(withMediaType: .video).first,
+           let track = composition.addMutableTrack(
+               withMediaType: .video,
+               preferredTrackID: kCMPersistentTrackID_Invalid) {
+            let size = (try? await sourceCamera.load(.naturalSize)) ?? .zero
+            if size.width > 0, size.height > 0 {
+                camera = (sourceCamera,
+                          (try? await sourceCamera.load(.timeRange)) ?? .invalid,
+                          track)
+                cameraSize = size
+            } else {
+                composition.removeTrack(track)
+            }
+        }
 
         let sourceAudio = includesAudio ? await RecorderAudioSource.tracks(in: asset) : [:]
         var audio: [(source: RecorderAudioSource, from: AVAssetTrack,
@@ -128,6 +160,19 @@ enum RecorderComposition {
                 // worth having.
                 continue
             }
+            // The camera can start after the screen or stop before it, so
+            // only the part it actually covers is taken; the gap leaves the
+            // screen showing on its own, which is what happened.
+            if let camera {
+                let overlap = CMTimeRangeGetIntersection(window,
+                                                         otherRange: camera.sourceRange)
+                if overlap.isValid, !overlap.isEmpty {
+                    let offset = CMTimeSubtract(overlap.start, window.start)
+                    try? camera.to.insertTimeRange(overlap,
+                                                   of: camera.from,
+                                                   at: CMTimeAdd(cursor, offset))
+                }
+            }
             for pair in audio {
                 let overlap = CMTimeRangeGetIntersection(window,
                                                          otherRange: pair.sourceRange)
@@ -144,6 +189,9 @@ enum RecorderComposition {
                       audioTrackIDs: Dictionary(uniqueKeysWithValues: audio.map {
                           ($0.source, $0.to.trackID)
                       }),
+                      videoTrackID: video.trackID,
+                      cameraTrackID: camera?.to.trackID,
+                      cameraSize: cameraSize,
                       duration: cursor)
     }
 }

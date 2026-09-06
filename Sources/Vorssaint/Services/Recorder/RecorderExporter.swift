@@ -57,6 +57,7 @@ final class RecorderExporter {
                 to destination: URL,
                 progress: @escaping (Double) -> Void) async -> Failure? {
         let asset = AVURLAsset(url: take.videoURL)
+        let cameraAsset = Self.cameraAsset(for: take)
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first,
               let durationTime = try? await asset.load(.duration)
         else { return .noVideo }
@@ -78,6 +79,8 @@ final class RecorderExporter {
         case .video:
             return await exportVideo(asset: asset,
                                      videoTrack: videoTrack,
+                                     cameraAsset: cameraAsset,
+                                     cameraTrackURL: take.cameraTrackURL,
                                      pointerURL: take.pointerURL,
                                      document: document,
                                      trim: trim,
@@ -88,6 +91,8 @@ final class RecorderExporter {
         case .gif:
             return await exportGIF(asset: asset,
                                    videoTrack: videoTrack,
+                                   cameraAsset: cameraAsset,
+                                   cameraTrackURL: take.cameraTrackURL,
                                    pointerURL: take.pointerURL,
                                    document: document,
                                    sourceSize: sourceSize,
@@ -134,6 +139,8 @@ final class RecorderExporter {
             try? FileManager.default.removeItem(at: destination)
             let failure = await exportVideo(asset: asset,
                                             videoTrack: videoTrack,
+                                            cameraAsset: Self.cameraAsset(for: take),
+                                            cameraTrackURL: take.cameraTrackURL,
                                             pointerURL: take.pointerURL,
                                             document: document,
                                             trim: trim,
@@ -167,8 +174,19 @@ final class RecorderExporter {
 
     // MARK: - Video
 
+    /// The camera file beside the master, only when it is really there. A
+    /// recording made before the camera existed, or one made without it, has
+    /// no file and takes the path it always took.
+    private static func cameraAsset(for take: RecorderTakeStore.Take) -> AVURLAsset? {
+        FileManager.default.fileExists(atPath: take.cameraURL.path)
+            ? AVURLAsset(url: take.cameraURL)
+            : nil
+    }
+
     private func exportVideo(asset: AVURLAsset,
                              videoTrack: AVAssetTrack,
+                             cameraAsset: AVURLAsset?,
+                             cameraTrackURL: URL,
                              pointerURL: URL,
                              document: RecorderEditDocument,
                              trim: RecorderSupport.Trim,
@@ -184,10 +202,16 @@ final class RecorderExporter {
         let ranges = document.keptRanges(duration: duration)
         let keepsAnyAudio = document.keepsSystemAudio || document.keepsMicrophone
         guard let result = await RecorderComposition.build(from: asset,
+                                                           cameraAsset: cameraAsset,
                                                            ranges: ranges,
-                                                           includesAudio: keepsAnyAudio),
-              let timelineVideo = try? await result.asset.loadTracks(withMediaType: .video).first
+                                                           includesAudio: keepsAnyAudio)
         else { return .readFailed }
+        let timelineVideoTracks = (try? await result.asset.loadTracks(withMediaType: .video)) ?? []
+        // By ID rather than by order: a recording carrying a camera has two
+        // video tracks, and the screen is not promised to be the first one.
+        guard let timelineVideo = timelineVideoTracks.first(where: {
+            $0.trackID == result.videoTrackID
+        }) else { return .readFailed }
         let timeline = result.asset
         let timelineDuration = (try? await timeline.load(.duration)) ?? .zero
         let audioTracks = (try? await timeline.loadTracks(withMediaType: .audio)) ?? []
@@ -227,7 +251,10 @@ final class RecorderExporter {
                                              sourceSize: sourceSize,
                                              frameRate: outputFrameRate,
                                              duration: duration,
-                                             outputScale: outputScale)
+                                             outputScale: outputScale,
+                                             cameraSize: result.cameraSize,
+                                             cameraTrack: RecorderCameraTrack.decoded(
+                                                 try? Data(contentsOf: cameraTrackURL)))
         let composer = plan.map { RecorderComposer(plan: $0) }
         let outputSize = composer?.canvasSize
             ?? sharingPlan?.size
@@ -240,15 +267,19 @@ final class RecorderExporter {
             frameRate: outputFrameRate,
             composer: composer,
             sourceSize: sourceSize,
-            outputSize: outputSize)
+            outputSize: outputSize,
+            screenTrackID: result.videoTrackID,
+            cameraTrackID: result.cameraTrackID)
 
         guard let reader = try? AVAssetReader(asset: timeline),
               let writer = try? AVAssetWriter(outputURL: destination, fileType: .mp4)
         else { return .readFailed }
         writer.shouldOptimizeForNetworkUse = sharingPlan != nil
 
+        // Every video track the composition reads from, or the compositor is
+        // handed a camera it was never given the frames for.
         let videoOutput = AVAssetReaderVideoCompositionOutput(
-            videoTracks: [timelineVideo],
+            videoTracks: timelineVideoTracks,
             videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
         videoOutput.videoComposition = composition
         videoOutput.alwaysCopiesSampleData = false
@@ -530,6 +561,8 @@ final class RecorderExporter {
     /// a single frame is decoded.
     private func exportGIF(asset: AVURLAsset,
                            videoTrack: AVAssetTrack,
+                           cameraAsset: AVURLAsset?,
+                           cameraTrackURL: URL,
                            pointerURL: URL,
                            document: RecorderEditDocument,
                            sourceSize: CGSize,
@@ -543,10 +576,14 @@ final class RecorderExporter {
         // the composer is asked for frames on the clock it draws in.
         let ranges = document.keptRanges(duration: duration)
         guard let result = await RecorderComposition.build(from: asset,
+                                                           cameraAsset: cameraAsset,
                                                            ranges: ranges,
-                                                           includesAudio: false),
-              let timelineVideo = try? await result.asset.loadTracks(withMediaType: .video).first
+                                                           includesAudio: false)
         else { return .readFailed }
+        let timelineVideoTracks = (try? await result.asset.loadTracks(withMediaType: .video)) ?? []
+        guard let timelineVideo = timelineVideoTracks.first(where: {
+            $0.trackID == result.videoTrackID
+        }) else { return .readFailed }
         let timeline = result.asset
         let outputDuration = CMTimeGetSeconds((try? await timeline.load(.duration)) ?? .zero)
         guard RecorderSupport.gifFitsBudget(duration: outputDuration, fps: fps) else {
@@ -563,7 +600,10 @@ final class RecorderExporter {
                                              track: track,
                                              sourceSize: sourceSize,
                                              frameRate: RecorderSupport.sanitizedFrameRate(frameRate),
-                                             duration: duration)
+                                             duration: duration,
+                                             cameraSize: result.cameraSize,
+                                             cameraTrack: RecorderCameraTrack.decoded(
+                                                 try? Data(contentsOf: cameraTrackURL)))
         let composer = plan.map { RecorderComposer(plan: $0) }
         let canvas = composer?.canvasSize ?? RecorderSupport.evenSize(sourceSize)
         let size = RecorderSupport.gifOutputSize(source: canvas, size: document.resolvedGIFSize)
@@ -581,7 +621,9 @@ final class RecorderExporter {
                 frameRate: RecorderSupport.sanitizedFrameRate(frameRate),
                 composer: composer,
                 sourceSize: sourceSize,
-                outputSize: canvas)
+                outputSize: canvas,
+                screenTrackID: result.videoTrackID,
+                cameraTrackID: result.cameraTrackID)
         }
 
         guard let sink = CGImageDestinationCreateWithURL(destination as CFURL,

@@ -1580,7 +1580,7 @@ private struct UnifiedCaptureGuideContent: View {
                 escapeHint
             }
             contextualGuide
-            RecorderSelectionAudioControls(options: options.recorderAudio)
+            RecorderSelectionTrackControls(options: options.recorderTracks)
                 .opacity(options.selectedTool == .recording ? 1 : 0)
                 .allowsHitTesting(options.selectedTool == .recording)
                 .accessibilityHidden(options.selectedTool != .recording)
@@ -1744,8 +1744,8 @@ private struct CaptureKeyHint: View {
     }
 }
 
-private struct RecorderSelectionAudioControls: View {
-    @ObservedObject var options: RecorderSelectionAudioOptions
+private struct RecorderSelectionTrackControls: View {
+    @ObservedObject var options: RecorderSelectionTrackOptions
     @ObservedObject private var l10n = L10n.shared
 
     private var strings: RecorderFeatureStrings { FeatureStrings.recorder(l10n.language) }
@@ -1757,6 +1757,9 @@ private struct RecorderSelectionAudioControls: View {
             }
             Toggle(isOn: $options.microphone) {
                 Label(strings.microphoneTrackLabel, systemImage: "mic.fill")
+            }
+            Toggle(isOn: $options.camera) {
+                Label(strings.cameraTrackLabel, systemImage: "video.fill")
             }
         }
         .toggleStyle(.button)

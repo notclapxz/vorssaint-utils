@@ -20,10 +20,13 @@ final class RecorderWriter {
     private let systemAudioInput: AVAssetWriterInput?
     private let microphoneInput: AVAssetWriterInput?
     private let pauseClock: RecorderPauseClock
+    /// Shared with the camera's writer, so both files agree on where the
+    /// recording starts without a second clock between them.
+    private let timeOrigin: RecorderTimeOrigin
 
     /// Everything is re-timed against the first sample that arrives, so the
     /// file starts at zero instead of at the machine's uptime.
-    private var origin: CMTime?
+    private var origin: Double?
     private var lastVideoSample: CMSampleBuffer?
     private var lastVideoTime: CMTime = .zero
     private var started = false
@@ -40,7 +43,8 @@ final class RecorderWriter {
           frameRate: Int,
           capturesSystemAudio: Bool,
           capturesMicrophone: Bool,
-          pauseClock: RecorderPauseClock) {
+          pauseClock: RecorderPauseClock,
+          timeOrigin: RecorderTimeOrigin) {
         guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return nil }
         // A recording that outlives a crash is worth the few extra bytes a
         // fragmented file costs.
@@ -94,6 +98,7 @@ final class RecorderWriter {
         self.systemAudioInput = systemAudioInput
         self.microphoneInput = microphoneInput
         self.pauseClock = pauseClock
+        self.timeOrigin = timeOrigin
     }
 
     // MARK: - Settings
@@ -149,10 +154,13 @@ final class RecorderWriter {
         let presentation = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard presentation.isValid else { return }
 
-        if origin == nil {
-            // The session opens on the first sample of any source, so the two
+        if !started {
+            // The session opens on the first sample of any source, so the
             // tracks share one zero and stay aligned without a second clock.
-            origin = presentation
+            // The zero is claimed here and read by the camera's writer, which
+            // is what keeps the face on the same timeline as the screen.
+            guard let zero = timeOrigin.resolve(firstSampleAt: presentation.seconds) else { return }
+            origin = zero
             writer.startSession(atSourceTime: .zero)
             started = true
         }
@@ -161,7 +169,7 @@ final class RecorderWriter {
         let seconds = duration.isValid && !duration.isIndefinite ? max(0, duration.seconds) : 0
         guard let mapped = pauseClock.sampleTime(start: presentation.seconds,
                                                  duration: seconds,
-                                                 since: origin.seconds) else { return }
+                                                 since: origin) else { return }
         let shifted = CMTime(seconds: mapped, preferredTimescale: 600_000_000)
 
         switch kind {
@@ -203,7 +211,7 @@ final class RecorderWriter {
         }
         if let origin, let lastVideoSample {
             let end = CMTime(
-                seconds: pauseClock.elapsed(since: origin.seconds, at: wallClockEnd.seconds),
+                seconds: pauseClock.elapsed(since: origin, at: wallClockEnd.seconds),
                 preferredTimescale: 600_000_000)
             if end > lastVideoTime, videoInput.isReadyForMoreMediaData,
                let tail = Self.retimed(lastVideoSample, to: end) {

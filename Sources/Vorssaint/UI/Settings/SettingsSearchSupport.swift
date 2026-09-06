@@ -308,6 +308,7 @@ enum SettingsSearchSupport {
                            screenshot.pinButton, screenshot.toolPixelate, screenshot.toolArrow]),
             (.screenRecorder, [recorder.pageTitle, recorder.startButton,
                                recorder.systemAudioToggle, recorder.microphoneToggle,
+                               recorder.cameraToggle,
                                recorder.qualityLabel, recorder.frameRateLabel]),
             (.screenOCR, [strings.ocrName, strings.ocrRemoveLineBreaksToggle, strings.ocrQRToggle]),
             (.colorPicker, [strings.colorPickerName, strings.colorPickerFormatLabel]),

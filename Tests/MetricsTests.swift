@@ -14057,7 +14057,7 @@ struct MetricsTests {
                    "no em-dash in WhatsApp organizer strings (\(language.rawValue))")
             let recorderValues = Mirror(reflecting: FeatureStrings.recorder(language)).children
                 .compactMap { $0.value as? String }
-            expect(recorderValues.count == 126 && recorderValues.allSatisfy { !$0.isEmpty },
+            expect(recorderValues.count == 134 && recorderValues.allSatisfy { !$0.isEmpty },
                    "every screen recorder string is set for \(language.rawValue)")
             expect(recorderValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible screen recorder strings (\(language.rawValue))")
@@ -20483,6 +20483,8 @@ struct MetricsTests {
                "a recording carries the sound of the Mac unless the person turns it off")
         expect(Defaults.registeredDefaults[DefaultsKey.recorderMicrophone] as? Bool == false,
                "microphone recording is optional and ships off")
+        expect(Defaults.registeredDefaults[DefaultsKey.recorderCamera] as? Bool == false,
+               "recording the camera is optional and ships off, like the microphone")
         expect(Defaults.registeredDefaults[DefaultsKey.recorderSharingEnabled] as? Bool == true,
                "temporary recording links stay visible but do nothing until explicitly used")
         expect(Defaults.registeredDefaults[DefaultsKey.recorderQuality] as? String == "balanced"
@@ -20504,7 +20506,7 @@ struct MetricsTests {
         expect(AppFeature.screenRecorder.group == .tools
                 && AppFeature.screenRecorder.enabledKeys.isEmpty
                 && AppFeature.screenRecorder.permissions
-                    == [.screenRecording, .accessibility, .audioCapture, .microphone],
+                    == [.screenRecording, .accessibility, .audioCapture, .microphone, .camera],
                "the recorder keeps its optional capture permissions contextual")
         expect(AppFeature.screenRecorder.energyProfile == .idle,
                "the recorder costs nothing between recordings")
@@ -21196,8 +21198,10 @@ struct MetricsTests {
         ), "the typing sampler appends a keystroke time only under the lock")
         // `RecorderSession.stop()` is nonisolated and async, so its body runs
         // off the main thread however main-actor the caller was (SE-0338).
-        // Both samplers install and remove AppKit event monitors, so they are
-        // started and stopped back on the main thread.
+        // All three samplers install and remove AppKit observers, so they are
+        // started and stopped back on the main thread. The camera's is handed
+        // its window separately, because the viewer belongs to the service and
+        // is already on screen before the recording exists.
         let recorderSessionShape = ((try? String(
             contentsOfFile: "Sources/Vorssaint/Services/Recorder/ScreenRecorderService.swift",
             encoding: .utf8)) ?? "")
@@ -21207,8 +21211,11 @@ struct MetricsTests {
             "await MainActor.run { pointer.start() typing.start() }"
         ), "the recorder installs its event monitors on the main thread")
         expect(recorderSessionShape.contains(
-            "await MainActor.run { (pointer.stop(), typing.stop()) }"
+            "await MainActor.run { (pointer.stop(), typing.stop(), cameraSampler?.stop()) }"
         ), "the recorder removes its event monitors on the main thread")
+        expect(recorderSessionShape.contains(
+            "@MainActor func followCamera(_ panel: NSWindow) { cameraSampler?.start(panel: panel) }"
+        ), "the recorder follows the camera viewer from the main thread too")
 
         let uniform = RecorderMotion.resampled(
             [RecorderMotion.Sample(time: 0, point: CGPoint(x: 0, y: 0)),
@@ -21379,6 +21386,125 @@ struct MetricsTests {
         expect(RecorderEditDocument(blurs: [RecorderBlurRegion(start: 4, end: 4.05)])
                 .sanitized(duration: 10).blurs.isEmpty,
                "a damaged blur is dropped by the same repair that fixes every other field")
+
+        // Two writers, one zero. The screen claims it and the camera reads it:
+        // a camera that could move the zero would play the face ahead of, or
+        // behind, whatever it is reacting to.
+        let recordingOrigin = RecorderTimeOrigin()
+        expect(recordingOrigin.seconds == nil,
+               "nothing owns a recording's zero until its first sample arrives")
+        expect(recordingOrigin.resolve(firstSampleAt: 120.5) == 120.5,
+               "the first sample of a recording claims the zero every track is measured from")
+        expect(recordingOrigin.resolve(firstSampleAt: 900) == 120.5
+                && recordingOrigin.seconds == 120.5,
+               "a source that starts later reads the zero it found instead of moving it")
+        let brokenOrigin = RecorderTimeOrigin()
+        expect(brokenOrigin.resolve(firstSampleAt: .nan) == nil && brokenOrigin.seconds == nil,
+               "a sample with no real time never becomes the zero the other tracks trust")
+
+        // The camera is placed, not dragged: the same nine anchors a caption
+        // uses, against the recording rather than against the canvas.
+        let cameraCard = CGRect(x: 100, y: 50, width: 1000, height: 500)
+        let cornerCamera = RecorderCameraOverlay(size: 0.2, shape: .circle)
+            .rect(in: cameraCard, cameraAspect: 16.0 / 9.0)
+        expect(cornerCamera == CGRect(x: 875, y: 75, width: 200, height: 200),
+               "a circular camera sits square in the corner of the recording, inside the same margin a caption keeps")
+        let wideCamera = RecorderCameraOverlay(anchor: .topLeading, size: 0.2, shape: .rectangle)
+            .rect(in: cameraCard, cameraAspect: 2)
+        expect(wideCamera.width == 200 && wideCamera.height == 100 && wideCamera.minX == 125,
+               "a rectangular camera keeps the shape of its own picture instead of being squared off")
+        let squeezedCamera = RecorderCameraOverlay(size: 0.45, shape: .circle)
+            .rect(in: CGRect(x: 0, y: 0, width: 1000, height: 100), cameraAspect: 1)
+        expect(abs(squeezedCamera.midY - 50) < 1e-9,
+               "a camera taller than the recording is centred in it rather than pushed outside by a negative margin")
+        expect(RecorderCameraOverlay.sanitizedSize(2) == RecorderCameraOverlay.maximumSize
+                && RecorderCameraOverlay.sanitizedSize(0) == RecorderCameraOverlay.minimumSize
+                && RecorderCameraOverlay.sanitizedSize(.nan) == RecorderCameraOverlay.defaultSize,
+               "the camera can never be shrunk to a dot, blown up to the whole picture, or lost to a broken number")
+        expect(RecorderCameraOverlay(size: 9).sanitized.size == RecorderCameraOverlay.maximumSize,
+               "a hand-edited camera size is repaired by the same pass that fixes every other field")
+
+        let placedCamera = RecorderCameraOverlay(anchor: .topLeading, size: 0.3, shape: .rectangle)
+        let cameraDocument = RecorderEditDocument.decoded(
+            RecorderEditDocument(camera: placedCamera).encoded())
+        expect(cameraDocument.camera == placedCamera,
+               "where the camera was put is written next to the recording and comes back as it was")
+        expect(RecorderEditDocument().affectsPicture(cameraDocument)
+                && !RecorderEditDocument().affectsTiming(cameraDocument)
+                && cameraDocument.isEdited(duration: 10),
+               "moving the camera redraws the preview without rebuilding the timeline, and counts as an edit")
+        expect(!RecorderEditDocument().isEdited(duration: 10),
+               "a camera left where every recording puts it is not an edit worth warning about")
+        expect(RecorderEditDocument.decoded(Data("{}".utf8)).camera == RecorderCameraOverlay(),
+               "a recording edited before the camera existed opens with the camera where a new one would put it")
+
+        // Dragging the viewer aside is done WHILE recording, so where it went
+        // is recorded and replayed rather than being lost with the panel.
+        let viewerArea = CGRect(x: 100, y: 200, width: 800, height: 400)
+        let parkedInside = RecorderCameraTrack.place(
+            viewer: CGRect(x: 100, y: 200, width: 80, height: 40),
+            in: viewerArea,
+            at: 0)
+        expect(parkedInside.map {
+            abs($0.x) < 1e-9 && abs($0.y - 0.9) < 1e-9
+                && abs($0.width - 0.1) < 1e-9 && abs($0.height - 0.1) < 1e-9
+        } == true,
+               "the viewer's corner of the screen becomes the same corner of the recording, counted from the top")
+        let parkedOutside = RecorderCameraTrack.place(
+            viewer: CGRect(x: 2000, y: 200, width: 80, height: 40),
+            in: viewerArea,
+            at: 1)
+        expect(parkedOutside.map { abs($0.x - 0.9) < 1e-9 } == true,
+               "a viewer parked outside the recorded area holds the nearest edge instead of leaving the picture")
+        let biggerThanTheArea = RecorderCameraTrack.place(
+            viewer: CGRect(x: 0, y: 0, width: 1600, height: 800),
+            in: viewerArea,
+            at: 2)
+        expect(biggerThanTheArea.map {
+            $0.width == 1 && $0.height == 1 && $0.x == 0 && $0.y == 0
+        } == true,
+               "a viewer larger than the recording fills it rather than hanging off both sides")
+        expect(RecorderCameraTrack.place(viewer: CGRect(x: 0, y: 0, width: 80, height: 40),
+                                         in: .zero,
+                                         at: 0) == nil,
+               "an area with no size places nothing")
+
+        let dragged = RecorderCameraTrack(samples: [
+            RecorderCameraTrack.Sample(time: 0, x: 0, y: 0, width: 0.2, height: 0.2),
+            RecorderCameraTrack.Sample(time: 2, x: 0.8, y: 0, width: 0.2, height: 0.2),
+        ])
+        expectClose(Double(dragged.rect(at: 1)?.minX ?? -1), 0.4,
+                    "a drag is replayed as a drag: halfway through it, the camera is halfway across")
+        expectClose(Double(dragged.rect(at: -5)?.minX ?? -1), 0,
+                    "before the first place the camera simply holds still")
+        expectClose(Double(dragged.rect(at: 99)?.minX ?? -1), 0.8,
+                    "after the last place it stays where it was left, so no closing sample is needed")
+        expect(RecorderCameraTrack().rect(at: 0) == nil,
+               "a recording whose viewer was never followed places the camera by hand instead")
+        expect(RecorderCameraTrack.isSamePlace(
+                RecorderCameraTrack.Sample(time: 0, x: 0.2, y: 0.2, width: 0.2, height: 0.2),
+                RecorderCameraTrack.Sample(time: 9, x: 0.2, y: 0.2, width: 0.2, height: 0.2)),
+               "a window reporting a move it did not make adds nothing to the track")
+
+        let damagedTrack = RecorderCameraTrack(samples: [
+            RecorderCameraTrack.Sample(time: 2, x: 0.5, y: 0.5, width: 0.2, height: 0.2),
+            RecorderCameraTrack.Sample(time: 0, x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+            RecorderCameraTrack.Sample(time: 99, x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+            RecorderCameraTrack.Sample(time: 1, x: .nan, y: 0.1, width: 0.2, height: 0.2),
+            RecorderCameraTrack.Sample(time: 1, x: 0.1, y: 0.1, width: 0, height: 0.2),
+        ]).sanitized(duration: 10)
+        expect(damagedTrack.samples.count == 2
+                && damagedTrack.samples.first?.time == 0
+                && damagedTrack.samples.last?.time == 2,
+               "a damaged camera track costs the camera its movement, never the whole recording")
+        let writtenTrack = RecorderCameraTrack.decoded(dragged.encoded())
+        expect(writtenTrack == dragged,
+               "the camera's movement is written next to the recording and comes back as it was")
+        expect(RecorderCameraTrack().encoded() == nil,
+               "a recording with no camera movement leaves no track file behind")
+        expect(RecorderCameraOverlay().followsRecording
+                && RecorderCameraOverlay().shape == .rectangle,
+               "a camera starts by replaying the recording, in the shape of the viewer that was watched")
 
         // The stage letterboxes the picture; a point on it has to come off
         // the empty bands before it means anything in the recording.

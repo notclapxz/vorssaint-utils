@@ -1953,6 +1953,7 @@ enum PermissionKind {
     case accessibility
     case screenRecording
     case microphone
+    case camera
 }
 
 /// Status + actions for one TCC permission; shared by Settings and onboarding.
@@ -1967,13 +1968,16 @@ struct PermissionRow: View {
         case .accessibility: return permissions.accessibility
         case .screenRecording: return permissions.screenRecording
         case .microphone: return permissions.microphone == .granted
+        case .camera: return permissions.camera == .granted
         }
     }
 
     private var monitorsActivePermission: Bool {
         switch kind {
         case .accessibility, .screenRecording: return true
-        case .microphone: return false
+        // Neither has a cheap poll worth running: both are answered by a
+        // system prompt the person is looking at when it appears.
+        case .microphone, .camera: return false
         }
     }
 
@@ -1983,6 +1987,8 @@ struct PermissionRow: View {
         case .screenRecording: return l10n.s.permissionScreenRecording
         case .microphone:
             return FeatureStrings.recorder(l10n.language).microphonePermissionName
+        case .camera:
+            return FeatureStrings.cameraPreview(l10n.language).permName
         }
     }
 
@@ -2007,6 +2013,8 @@ struct PermissionRow: View {
                             permissions.requestScreenRecording()
                         case .microphone:
                             permissions.requestMicrophone()
+                        case .camera:
+                            permissions.requestCamera()
                         }
                     }
                     Button(l10n.s.permissionOpenSettings) {
@@ -2017,6 +2025,8 @@ struct PermissionRow: View {
                             permissions.openScreenRecordingSettings()
                         case .microphone:
                             permissions.openMicrophoneSettings()
+                        case .camera:
+                            permissions.openCameraSettings()
                         }
                     }
                 }

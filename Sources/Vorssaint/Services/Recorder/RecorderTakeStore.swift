@@ -19,6 +19,12 @@ final class RecorderTakeStore: @unchecked Sendable {
         let folder: URL
 
         var videoURL: URL { folder.appendingPathComponent(RecorderSupport.takeVideoName) }
+        /// Only written when the recording asked for the camera, so its
+        /// presence is what tells the editor there is a face to lay over.
+        var cameraURL: URL { folder.appendingPathComponent(RecorderSupport.takeCameraName) }
+        var cameraTrackURL: URL {
+            folder.appendingPathComponent(RecorderSupport.takeCameraTrackName)
+        }
         var pointerURL: URL { folder.appendingPathComponent(RecorderSupport.takePointerName) }
         var typingURL: URL { folder.appendingPathComponent(RecorderSupport.takeTypingName) }
         var editURL: URL { folder.appendingPathComponent(RecorderSupport.takeEditName) }

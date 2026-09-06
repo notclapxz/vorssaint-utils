@@ -8,7 +8,7 @@ import Combine
 /// so changing a mode on one display updates the controls on all displays.
 final class ScreenCaptureSelectionOptions: ObservableObject {
     let availableTools: [ScreenCaptureTool]
-    let recorderAudio = RecorderSelectionAudioOptions()
+    let recorderTracks = RecorderSelectionTrackOptions()
     @Published private(set) var selectedTool: ScreenCaptureTool
     var onSelectionChange: (() -> Void)?
 
@@ -34,6 +34,10 @@ final class ScreenCaptureService: ObservableObject {
     /// The tools whose own shortcut could not be registered, so each tool's
     /// settings can say so.
     @Published private(set) var toolShortcutRegistrationFailures: Set<ScreenCaptureTool> = []
+
+    /// Live only while a selection is on screen, so the camera mirror can
+    /// never outlive the picker that asked for it.
+    private var cameraPreviewObservers: Set<AnyCancellable> = []
 
     /// One hotkey per tool, built from the tool list so a new mode cannot be
     /// added without one. Ids continue past the hand-assigned quick tool
@@ -197,19 +201,46 @@ final class ScreenCaptureService: ObservableObject {
             supportsScrollingCapture: options.availableTools.contains(.screenshot),
             screenCaptureOptions: options)
         selection = controller
+        observeCameraPreview(options)
         controller.begin { [weak self, weak controller, weak options] outcome in
             guard let self, let controller, let options,
                   self.selection === controller else { return }
             self.selection = nil
             self.options = nil
+            self.cameraPreviewObservers.removeAll()
+            // An area picked for the recorder hands the warmed camera to the
+            // recording that is about to start; every other ending closes it.
+            let handsCameraToRecorder: Bool
+            if case .region = outcome, options.selectedTool == .recording {
+                handsCameraToRecorder = true
+            } else {
+                handsCameraToRecorder = false
+            }
+            if !handsCameraToRecorder {
+                ScreenRecorderService.shared.previewCamera(false)
+            }
             self.route(outcome, selected: options.selectedTool,
-                       recorderAudio: options.recorderAudio)
+                       recorderTracks: options.recorderTracks)
         }
+    }
+
+    /// The mirror follows the picker: it comes up when the camera is switched
+    /// on while recording is the chosen tool, and goes away when either of
+    /// those stops being true. Watching both is what makes switching to the
+    /// screenshot tool with the camera still ticked put it away.
+    private func observeCameraPreview(_ options: ScreenCaptureSelectionOptions) {
+        cameraPreviewObservers.removeAll()
+        options.$selectedTool
+            .combineLatest(options.recorderTracks.$camera)
+            .sink { tool, wantsCamera in
+                ScreenRecorderService.shared.previewCamera(tool == .recording && wantsCamera)
+            }
+            .store(in: &cameraPreviewObservers)
     }
 
     private func route(_ outcome: ScreenshotSelectionController.Outcome,
                        selected: ScreenCaptureTool,
-                       recorderAudio: RecorderSelectionAudioOptions) {
+                       recorderTracks: RecorderSelectionTrackOptions) {
         guard ScreenshotSupport.captureRouteIsAuthorized(selected: selected) else { return }
         switch outcome {
         case .captured(let capture):
@@ -227,7 +258,7 @@ final class ScreenCaptureService: ObservableObject {
                 return
             }
             ScreenRecorderService.shared.record(region,
-                                                audioOptions: recorderAudio)
+                                                trackOptions: recorderTracks)
         case .scrollingRegion(let region):
             guard selected == .screenshot else {
                 showFailure(for: selected)
@@ -265,5 +296,10 @@ final class ScreenCaptureService: ObservableObject {
         selection?.cancel()
         selection = nil
         options = nil
+        // The controller's own ending never runs from here, so the mirror is
+        // put away by hand: otherwise a cancelled picker would leave the
+        // camera on with nobody watching it.
+        cameraPreviewObservers.removeAll()
+        ScreenRecorderService.shared.previewCamera(false)
     }
 }

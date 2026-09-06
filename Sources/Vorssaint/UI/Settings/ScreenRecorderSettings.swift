@@ -17,6 +17,7 @@ struct ScreenRecordingCaptureSettings: View {
     @AppStorage(DefaultsKey.recorderFrameRate) private var frameRate = 60
     @AppStorage(DefaultsKey.recorderSystemAudio) private var systemAudio = true
     @AppStorage(DefaultsKey.recorderMicrophone) private var microphone = false
+    @AppStorage(DefaultsKey.recorderCamera) private var camera = false
     @AppStorage(DefaultsKey.recorderSaveFolder) private var saveFolder = ""
     @AppStorage(DefaultsKey.recorderOpenEditor) private var opensEditor = true
     @AppStorage(DefaultsKey.recorderAutomaticZoom) private var automaticZoom = true
@@ -95,6 +96,20 @@ struct ScreenRecordingCaptureSettings: View {
                         .foregroundStyle(.secondary)
                     if microphone, permissions.microphone != .granted {
                         PermissionRow(kind: .microphone)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(strings.cameraToggle, isOn: $camera)
+                        .onChange(of: camera) { _, enabled in
+                            if enabled, permissions.camera == .undetermined {
+                                permissions.requestCamera()
+                            }
+                        }
+                    Text(strings.cameraCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if camera, permissions.camera != .granted {
+                        PermissionRow(kind: .camera)
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {

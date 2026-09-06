@@ -23,8 +23,9 @@ final class Permissions: ObservableObject {
     /// Refreshed inside refresh() only (launch and activation); notifications
     /// have no cheap poll and the portal calls refresh() when it appears.
     @Published private(set) var notifications: NotificationPermissionState = .unknown
-    /// Camera access for the preview mirror. The status read is free, so it
-    /// rides the same refresh() moments as the rest.
+    /// Camera access for the preview mirror and for a recording that lays the
+    /// camera over the screen. The status read is free, so it rides the same
+    /// refresh() moments as the rest.
     @Published private(set) var camera: CameraPermissionState = .unknown
     /// Optional microphone access, used only while a recording that asked for
     /// it is active.
@@ -333,10 +334,14 @@ final class Permissions: ObservableObject {
     }
 
     /// Shows the system camera prompt on first use; afterwards the state can
-    /// only change in System Settings.
-    func requestCamera() {
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] _ in
-            DispatchQueue.main.async { self?.refresh() }
+    /// only change in System Settings. The answer is reported back for a
+    /// recording that is waiting on it before it starts counting down.
+    func requestCamera(completion: ((Bool) -> Void)? = nil) {
+        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+            DispatchQueue.main.async {
+                self?.refresh()
+                completion?(granted)
+            }
         }
     }
 
