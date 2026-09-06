@@ -43,6 +43,8 @@ struct RecorderEditDocument: Codable, Equatable {
     var zoomsGenerated: Bool
     /// Lines of text laid over the recording, in the recording's own time.
     var texts: [RecorderTextOverlay]
+    /// Pictures laid over the recording, in the recording's own time.
+    var images: [RecorderImageOverlay]
     /// Parts of the picture kept unreadable, in the recording's own time.
     var blurs: [RecorderBlurRegion]
     var keepsMicrophone: Bool
@@ -72,6 +74,7 @@ struct RecorderEditDocument: Codable, Equatable {
          zoomSegments: [RecorderTimeline.ZoomSegment] = [],
          zoomsGenerated: Bool = false,
          texts: [RecorderTextOverlay] = [],
+         images: [RecorderImageOverlay] = [],
          blurs: [RecorderBlurRegion] = [],
          keepsMicrophone: Bool = true,
          systemAudioGain: Double = 1,
@@ -96,6 +99,7 @@ struct RecorderEditDocument: Codable, Equatable {
         self.zoomSegments = zoomSegments
         self.zoomsGenerated = zoomsGenerated
         self.texts = texts
+        self.images = images
         self.blurs = blurs
         self.keepsMicrophone = keepsMicrophone
         self.systemAudioGain = systemAudioGain
@@ -131,6 +135,7 @@ struct RecorderEditDocument: Codable, Equatable {
                                                      forKey: .zoomSegments) ?? []
         zoomsGenerated = try container.decodeIfPresent(Bool.self, forKey: .zoomsGenerated) ?? false
         texts = try container.decodeIfPresent([RecorderTextOverlay].self, forKey: .texts) ?? []
+        images = try container.decodeIfPresent([RecorderImageOverlay].self, forKey: .images) ?? []
         blurs = try container.decodeIfPresent([RecorderBlurRegion].self, forKey: .blurs) ?? []
         keepsMicrophone = try container.decodeIfPresent(Bool.self, forKey: .keepsMicrophone) ?? true
         systemAudioGain = try container.decodeIfPresent(Double.self, forKey: .systemAudioGain) ?? 1
@@ -275,6 +280,7 @@ struct RecorderEditDocument: Codable, Equatable {
             || zoomSegments != other.zoomSegments
             || cuts != other.cuts
             || texts != other.texts
+            || images != other.images
             || blurs != other.blurs
             || camera != other.camera
     }
@@ -300,6 +306,7 @@ struct RecorderEditDocument: Codable, Equatable {
         return trim.start > 0.01 || trim.end < duration - 0.01 || !keepsSystemAudio
             || !keepsMicrophone || systemAudioGain != 1 || microphoneGain != 1
             || !cuts.isEmpty || !zoomSegments.isEmpty || !texts.isEmpty || !blurs.isEmpty
+            || !images.isEmpty
             // Only a camera the person moved counts: one sitting where every
             // recording puts it is not an edit worth warning about.
             || camera != RecorderCameraOverlay()
@@ -327,6 +334,7 @@ struct RecorderEditDocument: Codable, Equatable {
         document.zoomSegments = RecorderTimeline.normalized(segments: zoomSegments,
                                                             duration: duration)
         document.texts = RecorderTextOverlay.normalized(texts, duration: duration)
+        document.images = RecorderImageOverlay.normalized(images, duration: duration)
         document.blurs = RecorderBlurRegion.normalized(blurs, duration: duration)
         document.camera = camera.sanitized
         return document
