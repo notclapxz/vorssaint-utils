@@ -73,6 +73,9 @@ final class RecorderComposer {
         /// moves is the same shape somewhere else, so the mask is drawn once
         /// and carried to each place rather than rebuilt per frame.
         let cameraMask: CIImage?
+        /// Whether the face is drawn flipped. False for a recording with no
+        /// camera, where nothing reads it.
+        let cameraMirrored: Bool
     }
 
     private let plan: Plan
@@ -153,10 +156,17 @@ final class RecorderComposer {
         let scale = max(rect.width / source.width, rect.height / source.height)
         let width = source.width * scale
         let height = source.height * scale
+        // Mirroring is the same framing with the X axis turned around. A
+        // negative scale leaves the picture to the left of the origin, so the
+        // edge that lines up with its place becomes the right one: the
+        // alternative, flipping the pixels when the track is written, cannot
+        // be taken back once the file is on disk.
+        let horizontalScale = plan.cameraMirrored ? -scale : scale
+        let originX = plan.cameraMirrored ? rect.midX + width / 2 : rect.midX - width / 2
         let placed = frame
             .transformed(by: CGAffineTransform(translationX: -source.minX, y: -source.minY))
-            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-            .transformed(by: CGAffineTransform(translationX: rect.midX - width / 2,
+            .transformed(by: CGAffineTransform(scaleX: horizontalScale, y: scale))
+            .transformed(by: CGAffineTransform(translationX: originX,
                                                y: rect.midY - height / 2))
 
         let extent = mask.extent

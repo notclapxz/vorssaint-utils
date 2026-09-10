@@ -298,7 +298,8 @@ extension RecorderComposer {
                     cameraRects: cameraRects,
                     cameraMask: cameraRect.flatMap {
                         cameraMask(size: $0.size, shape: camera?.shape ?? .rectangle)
-                    })
+                    },
+                    cameraMirrored: camera?.mirrored ?? false)
     }
 
     // MARK: - Plate

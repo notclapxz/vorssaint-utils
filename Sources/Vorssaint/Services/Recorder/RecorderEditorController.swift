@@ -120,7 +120,9 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
                     defaults.string(forKey: DefaultsKey.recorderGIFSize)).rawValue,
                 gifFrameRate: RecorderSupport.sanitizedGIFFrameRate(
                     defaults.integer(forKey: DefaultsKey.recorderGIFFrameRate)),
-                zoomEnabled: defaults.bool(forKey: DefaultsKey.recorderAutomaticZoom))
+                zoomEnabled: defaults.bool(forKey: DefaultsKey.recorderAutomaticZoom),
+                camera: RecorderCameraOverlay(
+                    mirrored: defaults.bool(forKey: DefaultsKey.recorderCameraMirrored)))
         }
         player.isMuted = false
         pointerTrack = RecorderPointerTrack.decoded(try? Data(contentsOf: take.pointerURL))

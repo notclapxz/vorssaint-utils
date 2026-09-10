@@ -591,6 +591,7 @@ enum DefaultsKey {
     static let recorderSystemAudio = "recorderSystemAudio"
     static let recorderMicrophone = "recorderMicrophone"
     static let recorderCamera = "recorderCamera"
+    static let recorderCameraMirrored = "recorderCameraMirrored"
     // Machine state, never exported: whether this Mac's audio system has let
     // a recording hear the Mac's sound through a process tap.
     static let recorderSystemAudioTapVerified = "recorderSystemAudioTapVerified"
@@ -1294,6 +1295,7 @@ enum Defaults {
         DefaultsKey.recorderSystemAudio: true,
         DefaultsKey.recorderMicrophone: false,
         DefaultsKey.recorderCamera: false,
+        DefaultsKey.recorderCameraMirrored: true,
         DefaultsKey.recorderSaveFolder: "",
         DefaultsKey.recorderOpenEditor: true,
         DefaultsKey.recorderAutomaticZoom: true,

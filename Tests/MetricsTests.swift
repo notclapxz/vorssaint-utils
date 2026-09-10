@@ -15595,7 +15595,7 @@ struct MetricsTests {
                    "no em-dash in WhatsApp organizer strings (\(language.rawValue))")
             let recorderValues = Mirror(reflecting: FeatureStrings.recorder(language)).children
                 .compactMap { $0.value as? String }
-            expect(recorderValues.count == 143 && recorderValues.allSatisfy { !$0.isEmpty },
+            expect(recorderValues.count == 144 && recorderValues.allSatisfy { !$0.isEmpty },
                    "every screen recorder string is set for \(language.rawValue)")
             expect(recorderValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible screen recorder strings (\(language.rawValue))")
@@ -23909,6 +23909,16 @@ struct MetricsTests {
                "a camera left where every recording puts it is not an edit worth warning about")
         expect(RecorderEditDocument.decoded(Data("{}".utf8)).camera == RecorderCameraOverlay(),
                "a recording edited before the camera existed opens with the camera where a new one would put it")
+
+        // Mirroring defaults to on, so the interesting case is the person who
+        // turned it OFF: a default that swallows an explicit false gives them
+        // their face back the wrong way round on the next open.
+        expect(RecorderEditDocument.decoded(Data("{}".utf8)).camera.mirrored,
+               "a recording edited before mirroring existed opens mirrored, like the viewer that was watched")
+        let unmirrored = RecorderCameraOverlay(mirrored: false)
+        expect(!RecorderEditDocument.decoded(
+                RecorderEditDocument(camera: unmirrored).encoded()).camera.mirrored,
+               "a camera the person unmirrored stays unmirrored when the recording is reopened")
 
         // Dragging the viewer aside is done WHILE recording, so where it went
         // is recorded and replayed rather than being lost with the panel.

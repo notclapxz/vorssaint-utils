@@ -110,16 +110,28 @@ final class RecorderCameraPreview {
     /// Live camera on black with a hairline around it, cut to the same corners
     /// as the quick mirror.
     ///
-    /// Flipped, like the quick mirror under its own shortcut: a person
-    /// checking their own framing is looking into a mirror, and a mirror that
-    /// swaps their hands is a mirror they have to think about. The file itself
-    /// is NOT flipped, so text behind them stays readable in the recording.
+    /// Flipped or not according to the person's own answer, because this is
+    /// what the finished recording will look like: a viewer that mirrors while
+    /// the export does not turns the setting into a surprise at the end. The
+    /// quick mirror under its own shortcut always flips, and that is not an
+    /// inconsistency — a mirror you look into is not a recording other people
+    /// watch, and one that swaps your hands is one you have to think about.
     private final class MirrorView: NSView {
+        private static let buttonSize: CGFloat = 28
+        private static let buttonMargin: CGFloat = 8
+
         private let previewLayer: AVCaptureVideoPreviewLayer
+        /// Hidden until the pointer is over the viewer. A control that sits
+        /// there the whole take is a control in every glance at your own face,
+        /// and the answer it changes is one people set once.
+        private let mirrorButton = NSButton()
         /// The layer's connection only exists once the session has its input,
         /// which can be after this view is built, so the flip is settled again
         /// the moment the camera starts.
         private var startObserver: NSObjectProtocol?
+        /// The same answer lives in Settings, so a viewer left open while it
+        /// is changed there has to catch up rather than show a stale face.
+        private var defaultsObserver: NSObjectProtocol?
 
         init(frame: NSRect, session: AVCaptureSession) {
             previewLayer = AVCaptureVideoPreviewLayer(session: session)
@@ -133,6 +145,7 @@ final class RecorderCameraPreview {
             previewLayer.videoGravity = .resizeAspectFill
             previewLayer.frame = bounds
             layer?.addSublayer(previewLayer)
+            addMirrorButton()
             applyMirroring()
             startObserver = NotificationCenter.default.addObserver(
                 forName: .AVCaptureSessionDidStartRunning,
@@ -140,6 +153,58 @@ final class RecorderCameraPreview {
                 queue: .main) { [weak self] _ in
                     self?.applyMirroring()
                 }
+            defaultsObserver = NotificationCenter.default.addObserver(
+                forName: UserDefaults.didChangeNotification,
+                object: UserDefaults.standard,
+                queue: .main) { [weak self] _ in
+                    self?.applyMirroring()
+                }
+        }
+
+        private func addMirrorButton() {
+            let strings = FeatureStrings.recorder(L10n.shared.language)
+            mirrorButton.bezelStyle = .circular
+            mirrorButton.isBordered = false
+            mirrorButton.wantsLayer = true
+            mirrorButton.layer?.cornerRadius = Self.buttonSize / 2
+            mirrorButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
+            mirrorButton.contentTintColor = .white
+            mirrorButton.image = NSImage(systemSymbolName: "arrow.left.arrow.right",
+                                         accessibilityDescription: strings.cameraMirrorToggle)
+            mirrorButton.imagePosition = .imageOnly
+            mirrorButton.toolTip = strings.cameraMirrorToggle
+            mirrorButton.setAccessibilityLabel(strings.cameraMirrorToggle)
+            mirrorButton.target = self
+            mirrorButton.action = #selector(toggleMirroring)
+            mirrorButton.isHidden = true
+            addSubview(mirrorButton)
+        }
+
+        /// The viewer's own switch writes the same answer Settings writes, so
+        /// the recording that follows opens already flipped the way it was
+        /// watched. A switch that only changed the viewer would be the very
+        /// mismatch this whole setting exists to remove.
+        @objc private func toggleMirroring() {
+            let defaults = UserDefaults.standard
+            defaults.set(!defaults.bool(forKey: DefaultsKey.recorderCameraMirrored),
+                         forKey: DefaultsKey.recorderCameraMirrored)
+            applyMirroring()
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(rect: bounds,
+                                           options: [.mouseEnteredAndExited, .activeAlways],
+                                           owner: self))
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            mirrorButton.isHidden = false
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            mirrorButton.isHidden = true
         }
 
         /// The layer's connection only exists once the session has an input,
@@ -149,11 +214,12 @@ final class RecorderCameraPreview {
         private func applyMirroring() {
             guard let connection = previewLayer.connection,
                   connection.isVideoMirroringSupported else { return }
+            let mirrored = UserDefaults.standard.bool(forKey: DefaultsKey.recorderCameraMirrored)
             if connection.automaticallyAdjustsVideoMirroring {
                 connection.automaticallyAdjustsVideoMirroring = false
             }
-            if !connection.isVideoMirrored {
-                connection.isVideoMirrored = true
+            if connection.isVideoMirrored != mirrored {
+                connection.isVideoMirrored = mirrored
             }
         }
 
@@ -167,6 +233,10 @@ final class RecorderCameraPreview {
                 NotificationCenter.default.removeObserver(startObserver)
                 self.startObserver = nil
             }
+            if let defaultsObserver {
+                NotificationCenter.default.removeObserver(defaultsObserver)
+                self.defaultsObserver = nil
+            }
             previewLayer.removeFromSuperlayer()
         }
 
@@ -174,11 +244,20 @@ final class RecorderCameraPreview {
             if let startObserver {
                 NotificationCenter.default.removeObserver(startObserver)
             }
+            if let defaultsObserver {
+                NotificationCenter.default.removeObserver(defaultsObserver)
+            }
         }
 
         override func layout() {
             super.layout()
             previewLayer.frame = bounds
+            // Bottom trailing: a face fills the middle, and the top corners are
+            // where the pointer arrives from when the panel is dragged.
+            mirrorButton.frame = CGRect(x: bounds.maxX - Self.buttonSize - Self.buttonMargin,
+                                        y: bounds.minY + Self.buttonMargin,
+                                        width: Self.buttonSize,
+                                        height: Self.buttonSize)
             applyMirroring()
         }
     }

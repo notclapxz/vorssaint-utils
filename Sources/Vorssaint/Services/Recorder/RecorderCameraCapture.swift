@@ -118,11 +118,12 @@ final class RecorderCameraCapture: NSObject,
         guard session.canAddInput(input), session.canAddOutput(output) else { return false }
         session.addInput(input)
         session.addOutput(output)
-        // Never flipped. A camera left to itself mirrors the built-in one, and
-        // a mirrored recording is a recording where every word on a shirt, a
-        // whiteboard or a screen behind the person reads backwards. The quick
-        // mirror under its own shortcut still flips, because a mirror you look
-        // into is not a recording other people watch.
+        // The track is written unflipped whatever the person chose. Mirroring
+        // is a decision of the edit (`RecorderCameraOverlay.mirrored`), applied
+        // when the picture is composed: pixels flipped on the way to disk
+        // cannot be turned back, and a recording is reopened long after the
+        // switch was set. The quick mirror under its own shortcut still flips
+        // always, because a mirror you look into is not a recording.
         if let connection = output.connection(with: .video),
            connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false

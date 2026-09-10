@@ -33,6 +33,16 @@ struct RecorderCameraOverlay: Codable, Equatable {
     /// How wide the camera is drawn, as a fraction of the recording's width.
     var size: Double
     var shape: Shape
+    /// Whether the face is flipped, the way the viewer showed it for the whole
+    /// take. Left alone a camera does not mirror, and that is what keeps a
+    /// shirt, a whiteboard or a screen behind the person readable; it is also
+    /// not what the person spent the recording looking at, so a face that
+    /// swaps sides on export reads as a stranger's.
+    ///
+    /// It lives on the document rather than being baked in at capture time:
+    /// flipping pixels on the way to disk cannot be undone, and the answer is
+    /// a matter of taste that people change once they see the result.
+    var mirrored: Bool
 
     /// A rectangle by default, because it is the shape of the viewer that was
     /// on screen the whole time: what was watched while recording is what the
@@ -46,6 +56,11 @@ struct RecorderCameraOverlay: Codable, Equatable {
     /// Big enough to read a face, small enough to leave the demonstration
     /// visible. The bounds exist so a slider can never make the camera a dot
     /// or the whole picture.
+    /// Mirrored by default: it matches the viewer that was on screen while
+    /// recording, so the finished video shows what was watched. Text caught on
+    /// camera reads backwards, which is the cost, and the toggle is there for
+    /// exactly that case.
+    static let defaultMirrored = true
     static let defaultSize: Double = 0.18
     static let minimumSize: Double = 0.08
     static let maximumSize: Double = 0.45
@@ -58,12 +73,14 @@ struct RecorderCameraOverlay: Codable, Equatable {
          followsRecording: Bool = true,
          anchor: RecorderTextOverlay.Anchor = .bottomTrailing,
          size: Double = defaultSize,
-         shape: Shape = .rectangle) {
+         shape: Shape = .rectangle,
+         mirrored: Bool = defaultMirrored) {
         self.visible = visible
         self.followsRecording = followsRecording
         self.anchor = anchor
         self.size = size
         self.shape = shape
+        self.mirrored = mirrored
     }
 
     /// A document written before the camera existed, or one carrying a value
@@ -77,6 +94,8 @@ struct RecorderCameraOverlay: Codable, Equatable {
             ?? .bottomTrailing
         size = try container.decodeIfPresent(Double.self, forKey: .size) ?? Self.defaultSize
         shape = try container.decodeIfPresent(Shape.self, forKey: .shape) ?? .rectangle
+        mirrored = try container.decodeIfPresent(Bool.self, forKey: .mirrored)
+            ?? Self.defaultMirrored
     }
 
     var sanitized: RecorderCameraOverlay {

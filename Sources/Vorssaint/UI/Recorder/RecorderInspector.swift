@@ -586,6 +586,9 @@ struct RecorderInspector: View {
                 // off is what hands the placement over, so size and place are
                 // hidden while the recording still owns them: two controls
                 // that quietly do nothing are worse than none.
+                Toggle(strings.cameraMirrorToggle, isOn: cameraMirroredBinding)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
                 if model.hasCameraTrack {
                     Toggle(strings.cameraFollowToggle, isOn: cameraFollowsBinding)
                         .toggleStyle(.switch)
@@ -626,6 +629,11 @@ struct RecorderInspector: View {
     private var cameraFollowsBinding: Binding<Bool> {
         Binding(get: { followsRecording },
                 set: { newValue in updateCamera { $0.followsRecording = newValue } })
+    }
+
+    private var cameraMirroredBinding: Binding<Bool> {
+        Binding(get: { model.document.camera.mirrored },
+                set: { newValue in updateCamera { $0.mirrored = newValue } })
     }
 
     private var cameraVisibleBinding: Binding<Bool> {

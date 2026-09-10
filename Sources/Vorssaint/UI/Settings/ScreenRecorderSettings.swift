@@ -18,6 +18,7 @@ struct ScreenRecordingCaptureSettings: View {
     @AppStorage(DefaultsKey.recorderSystemAudio) private var systemAudio = true
     @AppStorage(DefaultsKey.recorderMicrophone) private var microphone = false
     @AppStorage(DefaultsKey.recorderCamera) private var camera = false
+    @AppStorage(DefaultsKey.recorderCameraMirrored) private var cameraMirrored = true
     @AppStorage(DefaultsKey.recorderSaveFolder) private var saveFolder = ""
     @AppStorage(DefaultsKey.recorderOpenEditor) private var opensEditor = true
     @AppStorage(DefaultsKey.recorderAutomaticZoom) private var automaticZoom = true
@@ -108,6 +109,9 @@ struct ScreenRecordingCaptureSettings: View {
                     Text(strings.cameraCaption)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if camera {
+                        Toggle(strings.cameraMirrorToggle, isOn: $cameraMirrored)
+                    }
                     if camera, permissions.camera != .granted {
                         PermissionRow(kind: .camera)
                     }
