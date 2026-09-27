@@ -142,27 +142,11 @@ final class RecorderCameraCapture: NSObject,
               CMSampleBufferIsValid(sampleBuffer),
               CMSampleBufferGetImageBuffer(sampleBuffer) != nil
         else { return }
-        let sourceTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let targetTime = CMSyncConvertTime(sourceTime, from: sourceClock, to: targetClock)
-        guard targetTime.isValid,
-              let synchronized = Self.retimed(sampleBuffer, to: targetTime)
+        guard let synchronized = RecorderSampleTiming.converted(sampleBuffer,
+                                                                from: sourceClock,
+                                                                to: targetClock)
         else { return }
         onSample?(synchronized)
-    }
-
-    private static func retimed(_ sampleBuffer: CMSampleBuffer,
-                                to time: CMTime) -> CMSampleBuffer? {
-        var timing = CMSampleTimingInfo(duration: CMSampleBufferGetDuration(sampleBuffer),
-                                        presentationTimeStamp: time,
-                                        decodeTimeStamp: .invalid)
-        var copy: CMSampleBuffer?
-        let status = CMSampleBufferCreateCopyWithNewTiming(
-            allocator: kCFAllocatorDefault,
-            sampleBuffer: sampleBuffer,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleBufferOut: &copy)
-        return status == noErr ? copy : nil
     }
 }
 
@@ -179,14 +163,11 @@ final class RecorderCameraWriter {
 
     private let writer: AVAssetWriter
     private let pauseClock: RecorderPauseClock
-    private let timeOrigin: RecorderTimeOrigin
     private let frameRate: Int
 
     /// Built from the first frame rather than at init: only the camera knows
     /// how big its picture is, and a preset is a request, not an answer.
     private var input: AVAssetWriterInput?
-    private var origin: Double?
-    private var started = false
     private var failed = false
 
     /// Frames actually written, so a camera that produced nothing leaves no
@@ -195,13 +176,11 @@ final class RecorderCameraWriter {
 
     init?(url: URL,
           frameRate: Int,
-          pauseClock: RecorderPauseClock,
-          timeOrigin: RecorderTimeOrigin) {
+          pauseClock: RecorderPauseClock) {
         guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return nil }
         writer.movieFragmentInterval = CMTime(seconds: 10, preferredTimescale: 600)
         self.writer = writer
         self.pauseClock = pauseClock
-        self.timeOrigin = timeOrigin
         self.frameRate = frameRate
     }
 
@@ -211,28 +190,22 @@ final class RecorderCameraWriter {
         guard presentation.isValid,
               let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        if !started {
-            // The screen owns the zero. A camera that woke up a moment earlier
-            // must not push the screen it accompanies forward in the file, so
-            // its frames are dropped until the picture has claimed one.
-            guard let zero = timeOrigin.seconds,
-                  presentation.seconds >= zero,
-                  openFile(width: CVPixelBufferGetWidth(pixels),
-                           height: CVPixelBufferGetHeight(pixels))
-            else { return }
-            origin = zero
-            started = true
-        }
-        guard let origin, let input else { return }
-
+        // The screen owns the zero: the pause clock answers nothing until the
+        // screen's capture has begun, nor for a frame from before it. A camera
+        // that woke up a moment earlier must not push the screen it accompanies
+        // forward in the file, so those frames are dropped.
         let duration = CMSampleBufferGetDuration(sampleBuffer)
         let seconds = duration.isValid && !duration.isIndefinite ? max(0, duration.seconds) : 0
         guard let mapped = pauseClock.sampleTime(start: presentation.seconds,
-                                                 duration: seconds,
-                                                 since: origin) else { return }
+                                                 duration: seconds) else { return }
+        if input == nil {
+            guard openFile(width: CVPixelBufferGetWidth(pixels),
+                           height: CVPixelBufferGetHeight(pixels)) else { return }
+        }
+        guard let input else { return }
         let shifted = CMTime(seconds: mapped, preferredTimescale: 600_000_000)
         guard input.isReadyForMoreMediaData,
-              let retimed = Self.retimed(sampleBuffer, to: shifted) else { return }
+              let retimed = RecorderSampleTiming.retimed(sampleBuffer, to: shifted) else { return }
         if input.append(retimed) {
             frameCount += 1
         } else {
@@ -300,7 +273,7 @@ final class RecorderCameraWriter {
     /// frame finishes with no file at all, which is exactly how the editor
     /// tells a recording without a face from one with an empty one.
     func finish() async -> Bool {
-        guard started, !failed, frameCount > 0, let input else {
+        guard !failed, frameCount > 0, let input else {
             cancel()
             return false
         }
@@ -312,22 +285,5 @@ final class RecorderCameraWriter {
     func cancel() {
         guard writer.status == .writing else { return }
         writer.cancelWriting()
-    }
-
-    /// A copy of the buffer carrying a new presentation time. The pixels are
-    /// shared, not duplicated.
-    private static func retimed(_ sampleBuffer: CMSampleBuffer, to time: CMTime) -> CMSampleBuffer? {
-        var timing = CMSampleTimingInfo(
-            duration: CMSampleBufferGetDuration(sampleBuffer),
-            presentationTimeStamp: time,
-            decodeTimeStamp: .invalid)
-        var copy: CMSampleBuffer?
-        let status = CMSampleBufferCreateCopyWithNewTiming(
-            allocator: kCFAllocatorDefault,
-            sampleBuffer: sampleBuffer,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleBufferOut: &copy)
-        return status == noErr ? copy : nil
     }
 }

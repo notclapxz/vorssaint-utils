@@ -26,15 +26,20 @@ final class RecorderCameraCompositionInstruction: NSObject,
     let composer: RecorderComposer
     let screenTrackID: CMPersistentTrackID
     let cameraTrackID: CMPersistentTrackID
+    /// The composer's plans live on the edited, unscaled clock; an export at
+    /// another speed hands frames on the output clock and has to map back.
+    let timing: RecorderExportTiming
 
     init(timeRange: CMTimeRange,
          composer: RecorderComposer,
          screenTrackID: CMPersistentTrackID,
-         cameraTrackID: CMPersistentTrackID) {
+         cameraTrackID: CMPersistentTrackID,
+         timing: RecorderExportTiming = RecorderExportTiming(speed: 1)) {
         self.timeRange = timeRange
         self.composer = composer
         self.screenTrackID = screenTrackID
         self.cameraTrackID = cameraTrackID
+        self.timing = timing
         requiredSourceTrackIDs = [NSNumber(value: screenTrackID),
                                   NSNumber(value: cameraTrackID)]
         super.init()
@@ -109,7 +114,7 @@ final class RecorderCameraCompositor: NSObject, AVVideoCompositing {
         let rendered = instruction.composer.render(
             CIImage(cvPixelBuffer: screen),
             camera: camera.map { CIImage(cvPixelBuffer: $0) },
-            at: request.compositionTime.seconds)
+            at: instruction.timing.sourceTime(forOutputTime: request.compositionTime.seconds))
         context.render(rendered,
                        to: destination,
                        bounds: CGRect(origin: .zero, size: instruction.composer.canvasSize),

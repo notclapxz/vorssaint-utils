@@ -35,9 +35,6 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
     let region: RecorderSupport.Region
     private let engine = RecorderCaptureEngine()
     private let pauseClock = RecorderPauseClock()
-    /// Claimed by the screen's first sample and read by the camera's writer,
-    /// so both files start counting from the same instant.
-    private let timeOrigin = RecorderTimeOrigin()
     private let microphone: RecorderMicrophoneCapture?
     /// The camera and the file it writes: the face is a second video beside
     /// the screen, never inside it, so the editor still owns where it sits.
@@ -88,8 +85,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
                                           frameRate: frameRate,
                                           capturesSystemAudio: capturesSystemAudio,
                                           capturesMicrophone: capturesMicrophone,
-                                          pauseClock: pauseClock,
-                                          timeOrigin: timeOrigin)
+                                          pauseClock: pauseClock)
         else { return nil }
         self.take = take
         self.region = region
@@ -102,8 +98,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
         if camera != nil,
            let cameraWriter = RecorderCameraWriter(url: take.cameraURL,
                                                    frameRate: RecorderSupport.cameraFrameRate,
-                                                   pauseClock: pauseClock,
-                                                   timeOrigin: timeOrigin) {
+                                                   pauseClock: pauseClock) {
             self.cameraWriter = cameraWriter
             self.camera = camera
         } else {
@@ -151,6 +146,9 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
                                             frameRate: frameRate,
                                             capturesSystemAudio: capturesSystemAudio,
                                             excludedWindowNumbers: excludedWindowNumbers,
+                                            willStartCapture: { [writerQueue, writer] time in
+                                                writerQueue.sync { writer.beginSession(at: time) }
+                                            },
                                             isCancelled: { [weak self] in
                                                 self?.startGate.isAuthorized != true
                                             }) {
@@ -165,7 +163,8 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
         }
         // The tap starts before the microphone so the Mac's sound has the
         // shortest possible gap at the head of the file while it comes up.
-        if let tap, let clock = engine.synchronizationClock {
+        let clock = CMClockGetHostTimeClock()
+        if let tap {
             let started = await tap.start(synchronizingTo: clock)
             // A trusted tap that could not build a reader this time (no output
             // device, or a permission just revoked) would otherwise leave the
@@ -177,7 +176,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
             await engine.stop()
             return .streamFailed
         }
-        if let microphone, let clock = engine.synchronizationClock {
+        if let microphone {
             if await microphone.start(synchronizingTo: clock) == false {
                 onMicrophoneUnavailable?()
             }
@@ -190,7 +189,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
         }
         // Last of the sources, so the screen has already claimed the zero the
         // camera's frames are measured against.
-        if let camera, let clock = engine.synchronizationClock {
+        if let camera {
             // A camera warmed up during the picker only needs the clock; one
             // that was never warmed has to be started here.
             if camera.isRunning {
@@ -241,13 +240,14 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
         pauseClock.resume(at: time)
     }
 
-    func elapsed(since origin: CFTimeInterval, at time: CFTimeInterval) -> Double {
-        pauseClock.elapsed(since: origin, at: time)
+    func elapsed(at time: CFTimeInterval) -> Double {
+        pauseClock.elapsed(at: time)
     }
 
     /// Stops the stream first and waits for it, so the file is closed knowing
     /// no further frame can arrive.
     func stop() async -> Bool {
+        let end = CMClockGetTime(CMClockGetHostTimeClock())
         let ownsFinalization = startGate.cancelAndClaimStop()
         await startGate.waitUntilFinished()
         guard ownsFinalization else { return false }
@@ -273,7 +273,6 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
         let (track, typingTrack, cameraTrack) = await MainActor.run {
             (pointer.stop(), typing.stop(), cameraSampler?.stop())
         }
-        let end = CMClockGetTime(CMClockGetHostTimeClock())
         writerQueue.sync {}
         let written = await writer.finish(at: end)
         // Every camera frame has been handed to the writer queue by now, and
@@ -364,7 +363,6 @@ final class ScreenRecorderService: ObservableObject {
     private var editors: [RecorderEditorController] = []
     private var mediaOwnedEditorIDs: Set<ObjectIdentifier> = []
     private var elapsedTimer: Timer?
-    private var startedAt: CFTimeInterval = 0
     private var countdown: DispatchWorkItem?
     private var countdownRemaining = 0
     private var pendingStartGeneration = 0
@@ -752,7 +750,11 @@ final class ScreenRecorderService: ObservableObject {
             try? await Task.sleep(nanoseconds: 120_000_000)
             guard self.session === session,
                   self.pendingStartIsAuthorized(generation) else { return }
-            var chrome = Set(ScreenshotService.shared.protectedWindowIDsForCapture.map(Int.init))
+            // Recording is exempt from the screenshot visibility preference,
+            // so editors and pins stay out of the stream either way.
+            var chrome = Set(ScreenshotService.shared
+                .protectedWindowIDsForCapture(honoursVisibilityPreference: false)
+                .map(Int.init))
             chrome.formUnion(indicator.excludedWindowNumbers)
             chrome.formUnion(self.cameraPreview?.excludedWindowNumbers ?? [])
             if let number = QuickToolHUD.currentWindowNumber { chrome.insert(number) }
@@ -811,8 +813,8 @@ final class ScreenRecorderService: ObservableObject {
     private func recordingDidStart() {
         isRecording = true
         isPaused = false
-        elapsedSeconds = 0
-        startedAt = CACurrentMediaTime()
+        elapsedSeconds = Int(session?.elapsed(at: CACurrentMediaTime()) ?? 0)
+        indicator?.update(elapsed: RecorderSupport.elapsedLabel(seconds: elapsedSeconds))
         sleepActivity = ProcessInfo.processInfo.beginActivity(
             options: .idleSystemSleepDisabled,
             reason: "Recording the screen")
@@ -826,7 +828,7 @@ final class ScreenRecorderService: ObservableObject {
 
     private func tickElapsed() {
         guard isRecording, let session else { return }
-        elapsedSeconds = Int(session.elapsed(since: startedAt, at: CACurrentMediaTime()))
+        elapsedSeconds = Int(session.elapsed(at: CACurrentMediaTime()))
         indicator?.update(elapsed: RecorderSupport.elapsedLabel(seconds: elapsedSeconds))
         checkDiskSpace()
     }
@@ -842,7 +844,7 @@ final class ScreenRecorderService: ObservableObject {
             guard session.pause(at: now) else { return }
             isPaused = true
         }
-        elapsedSeconds = Int(session.elapsed(since: startedAt, at: now))
+        elapsedSeconds = Int(session.elapsed(at: now))
         indicator?.update(elapsed: RecorderSupport.elapsedLabel(seconds: elapsedSeconds))
         indicator?.update(paused: isPaused)
     }

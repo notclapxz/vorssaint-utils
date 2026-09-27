@@ -134,7 +134,6 @@ final class RecorderCameraSampler {
     private weak var panel: NSWindow?
     private let lock = NSLock()
     private var samples: [RecorderCameraTrack.Sample] = []
-    private var startedAt: CFTimeInterval = 0
 
     init(region: RecorderSupport.Region, pauseClock: RecorderPauseClock) {
         self.region = region
@@ -146,8 +145,7 @@ final class RecorderCameraSampler {
     func start(panel: NSWindow) {
         guard observer == nil else { return }
         self.panel = panel
-        startedAt = CACurrentMediaTime()
-        record(at: startedAt)
+        record(at: CACurrentMediaTime())
         observer = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
             object: panel,
@@ -186,7 +184,7 @@ final class RecorderCameraSampler {
     private func record(at now: CFTimeInterval) {
         guard let frame = panel?.frame else { return }
         // A moment inside a pause is not a moment of the recording.
-        guard let time = pauseClock.eventTime(now, since: startedAt),
+        guard let time = pauseClock.eventTime(now),
               let sample = RecorderCameraTrack.place(viewer: frame,
                                                      in: region.anchorRect,
                                                      at: time)

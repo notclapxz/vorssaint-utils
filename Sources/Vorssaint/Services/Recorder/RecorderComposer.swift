@@ -111,7 +111,7 @@ final class RecorderComposer {
     func render(_ source: CIImage, camera: CIImage?, at seconds: Double) -> CIImage {
         let index = frameIndex(for: seconds)
         var content = source.cropped(to: CGRect(origin: .zero, size: plan.sourceSize))
-        content = blurred(content, index: index)
+        content = blurred(content, at: seconds)
 
         let pointerWasOnScreen = plan.pointerVisible.indices.contains(index)
             ? plan.pointerVisible[index] : true
@@ -240,16 +240,26 @@ final class RecorderComposer {
     /// zoom magnifies the blur along with what it hides and the pointer still
     /// travels over it. A mosaic under a blur, rather than either alone: blocks
     /// destroy the letters and the blur destroys the blocks.
-    private func blurred(_ content: CIImage, index: Int) -> CIImage {
+    private func blurred(_ content: CIImage, at seconds: Double) -> CIImage {
         guard !plan.blurs.isEmpty else { return content }
+        // Retiming can hold a source frame between two plan samples. Rounding
+        // forward must not uncover that frame before its protected interval
+        // ends. Cover both neighboring samples, including either side of cuts.
+        // Exact plan times still use just their own sample.
+        let position = max(0, seconds) * Double(plan.frameRate)
+        let last = max(0, plan.positions.count - 1)
+        let lower = min(last, Int(position.rounded(.down)))
+        let upper = min(last, Int(position.rounded(.up)))
         var result = content
         for (order, region) in plan.blurs.enumerated() {
             guard plan.blurCovers.indices.contains(order),
-                  plan.blurCovers[order].indices.contains(index),
-                  plan.blurCovers[order][index] else { continue }
+                  (lower...upper).contains(where: {
+                      plan.blurCovers[order].indices.contains($0)
+                          && plan.blurCovers[order][$0]
+                  }) else { continue }
             let rect = region.pixelRect(in: plan.sourceSize)
             guard rect.width >= 1, rect.height >= 1 else { continue }
-            let block = RecorderSupport.blurBlockSize(for: rect.size)
+            let block = RecorderSupport.blurBlockSize(for: rect.size, strength: region.strength)
             // Clamped first so the blur never pulls transparent edges in and
             // lets a sliver of the original show through the border.
             let hidden = content.clampedToExtent()
@@ -408,8 +418,8 @@ final class RecorderComposer {
                                  sourceSize: CGSize,
                                  outputSize: CGSize,
                                  screenTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid,
-                                 cameraTrackID: CMPersistentTrackID? = nil)
-    async -> AVMutableVideoComposition? {
+                                 cameraTrackID: CMPersistentTrackID? = nil,
+                                 playbackSpeed: Double = 1) async -> AVMutableVideoComposition? {
         if let composer, let cameraTrackID, screenTrackID != kCMPersistentTrackID_Invalid {
             let composition = AVMutableVideoComposition()
             composition.customVideoCompositorClass = RecorderCameraCompositor.self
@@ -425,7 +435,8 @@ final class RecorderComposer {
                     timeRange: CMTimeRange(start: .zero, duration: span),
                     composer: composer,
                     screenTrackID: screenTrackID,
-                    cameraTrackID: cameraTrackID),
+                    cameraTrackID: cameraTrackID,
+                    timing: RecorderExportTiming(speed: playbackSpeed)),
             ]
             return composition
         }
@@ -433,11 +444,15 @@ final class RecorderComposer {
             // The handler may run concurrently; this composer only reads
             // immutable state while rendering each frame.
             nonisolated(unsafe) let threadSafeComposer = composer
+            let timing = RecorderExportTiming(speed: playbackSpeed)
             let composition = try? await AVMutableVideoComposition.videoComposition(
                 with: asset) { request in
+                    // Plans are built on the edited, unscaled clock. Map back
+                    // before looking up zooms, cursor shapes, captions and
+                    // privacy blurs, including frames on either side of a cut.
                     let rendered = threadSafeComposer.render(
                         request.sourceImage,
-                        at: CMTimeGetSeconds(request.compositionTime))
+                        at: timing.sourceTime(forOutputTime: CMTimeGetSeconds(request.compositionTime)))
                     request.finish(with: rendered, context: nil)
                 }
             guard let composition else { return nil }
