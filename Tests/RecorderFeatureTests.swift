@@ -395,6 +395,11 @@ enum RecorderFeatureTests {
                     "instruction.timing.sourceTime(forOutputTime: request.compositionTime.seconds)")
                 && recorderComposerSource.contains("timing: RecorderExportTiming(speed: playbackSpeed)"),
                "a recording with a camera exported at another speed keeps its edits on the right frames")
+        let notchCaptureControlsSource = (try? String(
+            contentsOfFile: "Sources/Vorssaint/UI/Notch/NotchCaptureControlsView.swift",
+            encoding: .utf8)) ?? ""
+        suite.expect(notchCaptureControlsSource.contains("isOn: $options.camera"),
+               "a chooser moved into Dynamic Island can still turn the camera on")
         let recorderExporterSource = (try? String(
             contentsOfFile: "Sources/Vorssaint/Services/Recorder/RecorderExporter.swift",
             encoding: .utf8)) ?? ""
