@@ -949,6 +949,12 @@ final class ScreenRecorderService: ObservableObject {
     /// uses, so both tools behave the same way about where things land.
     static func saveDestination(strings: RecorderFeatureStrings,
                                 fileExtension: String) -> URL {
+        saveDestination(prefix: strings.fileNamePrefix, fileExtension: fileExtension)
+    }
+
+    /// The same folder and naming for anything the recorder family writes,
+    /// voice included, so every recording lands in one place.
+    static func saveDestination(prefix: String, fileExtension: String) -> URL {
         let manager = FileManager.default
         var folder: URL?
         let stored = UserDefaults.standard.string(forKey: DefaultsKey.recorderSaveFolder) ?? ""
@@ -963,7 +969,7 @@ final class ScreenRecorderService: ObservableObject {
         let destination = folder
             ?? manager.urls(for: .desktopDirectory, in: .userDomainMask).first
             ?? manager.homeDirectoryForCurrentUser
-        let name = ScreenshotSupport.fileName(prefix: strings.fileNamePrefix,
+        let name = ScreenshotSupport.fileName(prefix: prefix,
                                               date: Date(),
                                               fileExtension: fileExtension)
         let unique = ScreenshotSupport.uniqueFileName(name) { candidate in

@@ -606,6 +606,7 @@ enum DefaultsKey {
     // Mode chooser visibility for dedicated capture shortcuts.
     static let screenshotShowCaptureMenuOnShortcut = "screenshotShowCaptureMenuOnShortcut"
     static let recorderShowCaptureMenuOnShortcut = "recorderShowCaptureMenuOnShortcut"
+    static let voiceShowCaptureMenuOnShortcut = "voiceShowCaptureMenuOnShortcut"
     static let screenOCRShowCaptureMenuOnShortcut = "screenOCRShowCaptureMenuOnShortcut"
     static let colorPickerShowCaptureMenuOnShortcut = "colorPickerShowCaptureMenuOnShortcut"
     // Screenshot capture and editor.
@@ -668,6 +669,11 @@ enum DefaultsKey {
     // in Application Support until retention sweeps it.
     static let recorderShortcutEnabled = "recorderShortcutEnabled"
     static let recorderShortcut = "recorderShortcut"
+    static let voiceShortcutEnabled = "voiceShortcutEnabled"
+    static let voiceShortcut = "voiceShortcut"
+    /// The unique ID of the microphone voice records with; empty follows
+    /// the system's input.
+    static let voiceMicrophoneID = "voiceMicrophoneID"
     static let recorderCountdown = "recorderCountdown"
     static let recorderQuality = "recorderQuality"
     static let recorderFrameRate = "recorderFrameRate"
@@ -1645,6 +1651,9 @@ enum Defaults {
         DefaultsKey.clipboardHistoryShortcut: GlobalShortcut.clipboardDefault.storageValue,
         DefaultsKey.recorderShortcutEnabled: false,
         DefaultsKey.recorderShortcut: GlobalShortcut.screenRecorderDefault.storageValue,
+        DefaultsKey.voiceShortcutEnabled: false,
+        DefaultsKey.voiceMicrophoneID: "",
+        DefaultsKey.voiceShortcut: GlobalShortcut.voiceRecorderDefault.storageValue,
         DefaultsKey.recorderCountdown: 3,
         DefaultsKey.recorderQuality: RecorderSupport.Quality.balanced.rawValue,
         DefaultsKey.recorderFrameRate: 60,
@@ -1663,6 +1672,7 @@ enum Defaults {
         DefaultsKey.panelUtilityPortManager: true,
         DefaultsKey.screenshotShowCaptureMenuOnShortcut: true,
         DefaultsKey.recorderShowCaptureMenuOnShortcut: true,
+        DefaultsKey.voiceShowCaptureMenuOnShortcut: true,
         DefaultsKey.screenOCRShowCaptureMenuOnShortcut: true,
         DefaultsKey.colorPickerShowCaptureMenuOnShortcut: true,
         DefaultsKey.screenshotShortcutEnabled: false,

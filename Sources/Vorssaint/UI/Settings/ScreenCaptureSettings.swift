@@ -79,6 +79,8 @@ struct ScreenCaptureSettings: View {
                 ScreenTextCaptureSettings()
             case .color:
                 ColorCaptureSettings()
+            case .voice:
+                VoiceCaptureSettings()
             }
         }
     }
@@ -88,7 +90,11 @@ struct ScreenCaptureSettings: View {
             if let anchor = router.destination.sectionAnchor,
                let requestedTool = anchor.screenCaptureTool,
                availableTools.contains(requestedTool) {
-                selectedTool = requestedTool
+                // Voice shares the recorder's destination, so a request for
+                // that page keeps whichever of the two is already chosen.
+                if requestedTool.feature != currentTool.feature {
+                    selectedTool = requestedTool
+                }
             } else if router.destination.sectionAnchor == nil,
                       let first = availableTools.first {
                 selectedTool = first
@@ -236,5 +242,35 @@ private struct ColorCaptureSettings: View {
             Text(l10n.s.colorPickerName)
         }
         .settingsFormSectionAnchor(.colorPicker)
+    }
+}
+
+private struct VoiceCaptureSettings: View {
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var permissions = Permissions.shared
+    @AppStorage(DefaultsKey.voiceMicrophoneID) private var microphoneID = ""
+    @StateObject private var microphones = VoiceMicrophones()
+
+    var body: some View {
+        let strings = FeatureStrings.voice(l10n.language)
+        Section {
+            Button {
+                ScreenCaptureService.shared.capture(initial: .voice)
+            } label: {
+                Label(strings.toolTitle, systemImage: "waveform")
+            }
+            Text(strings.settingsCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker(strings.microphoneLabel, selection: $microphoneID) {
+                VoiceMicrophoneOptions(microphones: microphones, chosenID: microphoneID,
+                                       strings: strings)
+            }
+            if permissions.microphone != .granted {
+                PermissionRow(kind: .microphone)
+            }
+        } header: {
+            Text(strings.toolTitle)
+        }
     }
 }

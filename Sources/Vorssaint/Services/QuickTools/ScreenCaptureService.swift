@@ -13,6 +13,9 @@ final class ScreenCaptureSelectionOptions: ObservableObject {
     var hasFocusedControl = false
     var onPresentationReady: (() -> Void)?
     var onSelectionProgressChange: ((Bool) -> Void)?
+    /// The voice tool picks nothing on screen: its Start button ends the
+    /// selection and starts recording.
+    var onStartVoice: (() -> Void)?
     let recorderTracks = RecorderSelectionTrackOptions()
     @Published private(set) var selectedTool: ScreenCaptureTool
     @Published var offersRepeatLastRegion = false
@@ -118,6 +121,8 @@ final class ScreenCaptureService: ObservableObject {
     /// button merely picks the initial mode; the person can switch before
     /// selecting anything.
     func capture(initial preferred: ScreenCaptureTool? = nil, fromShortcut: Bool = false) {
+        let voice = VoiceRecorderService.shared
+        if preferred == .voice, voice.stopOrCancelActiveCapture() { return }
         let recorder = ScreenRecorderService.shared
         if preferred == .recording, AppFeature.screenRecorder.isAvailable,
            recorder.stopOrCancelActiveCapture() {
@@ -133,8 +138,13 @@ final class ScreenCaptureService: ObservableObject {
         }
         guard selection == nil, !ScreenshotSelectionController.isSessionOnScreen else { return }
 
-        let available = ScreenCaptureTool.available()
+        // Both recorders want the microphone, so while one runs the chooser
+        // offers neither of them.
+        let available = ScreenCaptureTool.available().filter {
+            !(voice.hasActiveCapture && ($0 == .recording || $0 == .voice))
+        }
         guard !available.isEmpty else { return }
+        if voice.hasActiveCapture, let preferred, !available.contains(preferred) { return }
         let selected = preferred.flatMap { available.contains($0) ? $0 : nil }
             ?? (available.contains(.screenshot) ? .screenshot : available[0])
         if duringRecording, selected != preferred { return }
@@ -147,6 +157,10 @@ final class ScreenCaptureService: ObservableObject {
             // direct action keeps the native path when capture access is off.
             if selected == .color {
                 ColorSamplerService.shared.pickNative()
+            } else if selected == .voice {
+                // Nor does the microphone: without the chooser's overlay,
+                // voice simply starts.
+                voice.start()
             } else {
                 Permissions.shared.requestScreenRecording()
             }
@@ -234,6 +248,11 @@ final class ScreenCaptureService: ObservableObject {
             mode: policy.usesGeometry ? .geometry : .image,
             supportsScrollingCapture: options.availableTools.contains(.screenshot),
             screenCaptureOptions: options)
+        options.onStartVoice = { [weak self, weak options] in
+            guard let self, let options, self.options === options else { return }
+            self.cancelSelection()
+            VoiceRecorderService.shared.start()
+        }
         if options.controlsInNotch {
             options.onPresentationReady = { [weak self, weak options] in
                 guard let self, let options, self.options === options else { return }
@@ -291,7 +310,7 @@ final class ScreenCaptureService: ObservableObject {
                 ScreenshotService.shared.receiveUnifiedCapture(capture)
             case .text:
                 ScreenTextService.shared.receiveUnifiedCapture(capture)
-            case .recording, .color:
+            case .recording, .color, .voice:
                 showFailure(for: selected)
             }
         case .region(let region):
@@ -333,6 +352,7 @@ final class ScreenCaptureService: ObservableObject {
     private func cancelSelection() {
         NotchService.shared.endCaptureControls()
         options?.onPresentationReady = nil
+        options?.onStartVoice = nil
         countdown?.cancel()
         countdown = nil
         countdownTools = nil

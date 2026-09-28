@@ -248,6 +248,14 @@ final class RecorderMicrophoneCapture: NSObject,
     private let session = AVCaptureSession()
     private var targetClock: CMClock?
     private var configured = false
+    /// A particular microphone, or nil for the system's input. One that is
+    /// not connected falls back to the system's, rather than recording nothing.
+    private let deviceID: String?
+
+    init(deviceID: String? = nil) {
+        self.deviceID = deviceID
+        super.init()
+    }
 
     func start(synchronizingTo clock: CMClock) async -> Bool {
         await withCheckedContinuation { continuation in
@@ -275,7 +283,8 @@ final class RecorderMicrophoneCapture: NSObject,
 
     private func configureIfNeeded() -> Bool {
         if configured { return true }
-        guard let device = AVCaptureDevice.default(for: .audio),
+        guard let device = deviceID.flatMap(AVCaptureDevice.init(uniqueID:))
+                ?? AVCaptureDevice.default(for: .audio),
               let input = try? AVCaptureDeviceInput(device: device)
         else { return false }
 

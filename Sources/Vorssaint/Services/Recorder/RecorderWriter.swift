@@ -216,7 +216,7 @@ final class RecorderWriter {
     /// The encoder cannot switch between one PCM buffer and a buffer per
     /// channel mid-recording. Interleave captured audio without resampling
     /// or remixing it, keeping the device's timing and channel layout intact.
-    private static func interleavedAudioSample(_ sample: CMSampleBuffer,
+    static func interleavedAudioSample(_ sample: CMSampleBuffer,
                                                converter: inout AVAudioConverter?) -> CMSampleBuffer? {
         guard let description = CMSampleBufferGetFormatDescription(sample),
               var asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,

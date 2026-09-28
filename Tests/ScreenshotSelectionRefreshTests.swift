@@ -194,12 +194,12 @@ enum ScreenshotSelectionRefreshContract {
                 let c = Chooser(tool)
                 Chooser.lastRegion = display.map { ($0, CGRect(x: 0, y: 0, width: 20, height: 20)) }
                 let available = display == 1 || display == 2
-                expect(c.offersRepeatLastRegion == (available && tool != .color),
+                expect(c.offersRepeatLastRegion == (available && tool != .color && tool != .voice),
                        "repeat is offered only for a stored display and a tool that accepts regions")
                 expect(c.repeatTargetPanel?.displayID == (available ? display : nil),
                        "repeat targets its stored display even when the pointer is on another display")
                 c.repeatLastRegion()
-                expect((c.outcome != nil) == (available && tool != .color),
+                expect((c.outcome != nil) == (available && tool != .color && tool != .voice),
                        "the repeat hint agrees with the production confirmation path")
             }
         }

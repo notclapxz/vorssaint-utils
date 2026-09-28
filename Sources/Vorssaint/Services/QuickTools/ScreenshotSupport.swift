@@ -14,6 +14,7 @@ enum ScreenCaptureTool: String, CaseIterable {
     case recording
     case text
     case color
+    case voice
 
     var shortcutKey: String {
         switch self {
@@ -21,6 +22,7 @@ enum ScreenCaptureTool: String, CaseIterable {
         case .recording: return "2"
         case .text: return "3"
         case .color: return "4"
+        case .voice: return "5"
         }
     }
 
@@ -35,6 +37,9 @@ enum ScreenCaptureTool: String, CaseIterable {
         case .recording: return .screenRecorder
         case .text: return .screenOCR
         case .color: return .colorPicker
+        // Voice is part of the recorder: installing one installs the other,
+        // and it needs no feature of its own in the hub.
+        case .voice: return .screenRecorder
         }
     }
 
@@ -66,6 +71,9 @@ enum ScreenCaptureTool: String, CaseIterable {
         case .color:
             return DedicatedShortcut(role: .colorPicker,
                                      enabledKey: DefaultsKey.colorPickerShortcutEnabled)
+        case .voice:
+            return DedicatedShortcut(role: .voiceRecorder,
+                                     enabledKey: DefaultsKey.voiceShortcutEnabled)
         }
     }
 
@@ -75,6 +83,7 @@ enum ScreenCaptureTool: String, CaseIterable {
         case .recording: return DefaultsKey.recorderShowCaptureMenuOnShortcut
         case .text: return DefaultsKey.screenOCRShowCaptureMenuOnShortcut
         case .color: return DefaultsKey.colorPickerShowCaptureMenuOnShortcut
+        case .voice: return DefaultsKey.voiceShowCaptureMenuOnShortcut
         }
     }
 
@@ -84,9 +93,11 @@ enum ScreenCaptureTool: String, CaseIterable {
 
     /// A running recording blocks the capture menu, because picking recording
     /// from it would stop the take. A shortcut that skips the menu can only
-    /// reach its own tool, so it may run on top of the recording.
+    /// reach its own tool, so it may run on top of the recording. Voice never
+    /// does: both would want the same microphone.
     func opensDuringRecording(fromShortcut: Bool, defaults: UserDefaults = .standard) -> Bool {
-        self != .recording && !showsCaptureMenu(fromShortcut: fromShortcut, defaults: defaults)
+        self != .recording && self != .voice
+            && !showsCaptureMenu(fromShortcut: fromShortcut, defaults: defaults)
     }
 
     var systemImageName: String {
@@ -95,6 +106,7 @@ enum ScreenCaptureTool: String, CaseIterable {
         case .recording: return "record.circle"
         case .text: return "text.viewfinder"
         case .color: return "eyedropper"
+        case .voice: return "waveform"
         }
     }
 
@@ -103,12 +115,18 @@ enum ScreenCaptureTool: String, CaseIterable {
     /// Every other mode leaves them out entirely, reserving no space for them.
     var capturesAudio: Bool { self == .recording }
 
+    /// Whether the chooser adds a row under the palette: the recorder's
+    /// tracks, or voice's Start button. Surfaces that size themselves to the
+    /// chooser read this, so the row is never cut off.
+    var hasSelectionControlsRow: Bool { capturesAudio || self == .voice }
+
     func settingsTitle(_ strings: Strings, language: AppLanguage) -> String {
         switch self {
         case .screenshot: return FeatureStrings.screenshot(language).pageTitle
         case .recording: return FeatureStrings.recorder(language).pageTitle
         case .text: return strings.ocrName
         case .color: return strings.colorPickerName
+        case .voice: return FeatureStrings.voice(language).toolTitle
         }
     }
 
@@ -150,12 +168,15 @@ enum ScreenshotSupport {
                                      screenshotIncludePointer: Bool,
                                      screenshotHideVorssaintWindows: Bool)
         -> UnifiedCapturePolicy {
-        UnifiedCapturePolicy(
+        // Voice picks nothing on screen; it takes the recorder's policy so
+        // switching between the two never re-photographs the displays.
+        let picksGeometry = tool == .recording || tool == .voice
+        return UnifiedCapturePolicy(
             freeze: tool == .screenshot ? screenshotFreeze : true,
             includePointer: tool == .screenshot && screenshotIncludePointer,
-            hideVorssaintWindows: tool != .recording && screenshotHideVorssaintWindows,
-            keepsContentWindowsOut: tool == .recording || screenshotHideVorssaintWindows,
-            usesGeometry: tool == .recording)
+            hideVorssaintWindows: !picksGeometry && screenshotHideVorssaintWindows,
+            keepsContentWindowsOut: picksGeometry || screenshotHideVorssaintWindows,
+            usesGeometry: picksGeometry)
     }
 
     static func captureAvailabilityChanged(activeTools: [ScreenCaptureTool],

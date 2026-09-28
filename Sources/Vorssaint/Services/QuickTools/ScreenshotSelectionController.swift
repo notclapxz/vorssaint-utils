@@ -71,8 +71,10 @@ final class ScreenshotSelectionController {
     private var sourceRefreshPending = false
     /// Old pixels and window choices remain visible during refresh, but cannot
     /// be used by either pointer actions or keyboard confirmations.
+    /// Voice picks nothing on screen: a click on a window or a drag must not
+    /// start it by accident. Only its Start button, or Return, does.
     fileprivate var acceptsCaptureInput: Bool {
-        !finished && !sourceRefreshPending
+        !finished && !sourceRefreshPending && activeTool != .voice
     }
     fileprivate let requiresDraggedRegion: Bool
     private var finished = false
@@ -110,7 +112,7 @@ final class ScreenshotSelectionController {
         return panels.first { $0.displayID == last.displayID }
     }
     fileprivate var offersRepeatLastRegion: Bool {
-        ScreenshotSupport.offersRepeatLastRegion(
+        activeTool != .voice && ScreenshotSupport.offersRepeatLastRegion(
             isPickingColor: isPickingColor,
             storedRegionDisplayIsAvailable: repeatTargetPanel != nil)
     }
@@ -195,7 +197,7 @@ final class ScreenshotSelectionController {
 
     private var activeMode: Mode {
         switch activeTool {
-        case .recording: return .geometry
+        case .recording, .voice: return .geometry
         case .color: return .color
         case .screenshot, .text: return .image
         case .none: return baseMode
@@ -408,7 +410,9 @@ final class ScreenshotSelectionController {
             case kVK_Escape:
                 self.finish(.cancelled)
             case kVK_Return, kVK_ANSI_KeypadEnter:
-                if self.acceptsWindowClick {
+                if self.startVoiceIfChosen() {
+                    break
+                } else if self.acceptsWindowClick {
                     self.captureFullDisplayUnderMouse()
                 }
             case kVK_Space:
@@ -440,6 +444,13 @@ final class ScreenshotSelectionController {
             guard event.keyCode == UInt16(kVK_Escape) else { return }
             self?.finish(.cancelled)
         }
+    }
+
+    /// Return with voice chosen presses its Start button.
+    private func startVoiceIfChosen() -> Bool {
+        guard activeTool == .voice, let start = screenCaptureOptions?.onStartVoice else { return false }
+        start()
+        return true
     }
 
     private func selectCaptureTool(for event: NSEvent) -> Bool {
@@ -1714,10 +1725,18 @@ private struct UnifiedCaptureGuideContent: View {
                     escapeHint
                 }
             }
-            RecorderSelectionTrackControls(options: options.recorderTracks)
-                .opacity(options.selectedTool == .recording ? 1 : 0)
-                .allowsHitTesting(options.selectedTool == .recording)
-                .accessibilityHidden(options.selectedTool != .recording)
+            // Both share one row, so switching between them never moves the
+            // palette above.
+            ZStack {
+                RecorderSelectionTrackControls(options: options.recorderTracks)
+                    .opacity(options.selectedTool == .recording ? 1 : 0)
+                    .allowsHitTesting(options.selectedTool == .recording)
+                    .accessibilityHidden(options.selectedTool != .recording)
+                VoiceStartControls(options: options)
+                    .opacity(options.selectedTool == .voice ? 1 : 0)
+                    .allowsHitTesting(options.selectedTool == .voice)
+                    .accessibilityHidden(options.selectedTool != .voice)
+            }
         }
     }
 
@@ -1728,8 +1747,11 @@ private struct UnifiedCaptureGuideContent: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
-            CaptureKeyHint(key: "1–4", icon: "keyboard")
-            if options.selectedTool != .color {
+            CaptureKeyHint(key: "1–\(ScreenCaptureTool.allCases.last?.shortcutKey ?? "")",
+                           icon: "keyboard")
+            if options.selectedTool == .voice {
+                CaptureKeyHint(key: "↩", icon: "waveform")
+            } else if options.selectedTool != .color {
                 CaptureKeyHint(key: "↩", icon: "rectangle.inset.filled")
                 if offersScrollingCapture, options.selectedTool == .screenshot {
                     CaptureKeyHint(key: scrollingCaptureEnabled ? "S on" : "S",
@@ -1858,6 +1880,8 @@ private struct UnifiedCaptureGuideContent: View {
             return l10n.s.ocrCaption
         case .color:
             return l10n.s.colorPickerCaption
+        case .voice:
+            return FeatureStrings.voice(l10n.language).selectionHint
         }
     }
 }
@@ -1901,6 +1925,35 @@ private struct RecorderSelectionTrackControls: View {
         }
         .toggleStyle(.button)
         .buttonStyle(.bordered)
+        .controlSize(.small)
+        .padding(4)
+        .background(CaptureChromeBackdrop(material: .regularMaterial,
+                                          shape: Capsule(style: .continuous)))
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+}
+
+/// Voice has no area to pick, so the row the recorder uses for its tracks
+/// carries the button that starts it instead.
+private struct VoiceStartControls: View {
+    @ObservedObject var options: ScreenCaptureSelectionOptions
+    @ObservedObject private var l10n = L10n.shared
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VoiceMicrophoneMenu()
+                .buttonStyle(.bordered)
+            Button {
+                options.onStartVoice?()
+            } label: {
+                Label(FeatureStrings.voice(l10n.language).startButton, systemImage: "record.circle")
+            }
+            .buttonStyle(.borderedProminent)
+        }
         .controlSize(.small)
         .padding(4)
         .background(CaptureChromeBackdrop(material: .regularMaterial,

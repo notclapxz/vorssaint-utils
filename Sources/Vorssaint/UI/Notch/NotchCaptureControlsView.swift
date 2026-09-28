@@ -4,7 +4,7 @@
 import SwiftUI
 
 private enum NotchCaptureControl: Hashable {
-    case collapse, close, tool(ScreenCaptureTool), systemAudio, microphone, camera
+    case collapse, close, tool(ScreenCaptureTool), systemAudio, microphone, camera, microphoneChoice, startVoice
 }
 
 /// The same selection model drives keyboard shortcuts and the screen overlay.
@@ -45,6 +45,21 @@ struct NotchCaptureControlsView: View {
             }
             if options.selectedTool.capturesAudio {
                 NotchRecordingAudioOptions(options: options.recorderTracks, focusedControl: $focusedControl)
+            }
+            if options.selectedTool == .voice {
+                HStack(spacing: 10) {
+                    VoiceMicrophoneMenu()
+                        .focused($focusedControl, equals: .microphoneChoice)
+                    Button {
+                        options.onStartVoice?()
+                    } label: {
+                        Label(FeatureStrings.voice(l10n.language).startButton, systemImage: "record.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .focused($focusedControl, equals: .startVoice)
+                }
+                .controlSize(.small)
             }
         }
         .foregroundStyle(.white)

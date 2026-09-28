@@ -471,7 +471,7 @@ final class NotchService: ObservableObject {
             }
             return CGSize(width: geometry.expanded.width,
                           height: geometry.safeContentTop + 28 + 12 + NotchLayout.shortcutHeight + 16
-                            + (captureControls.selectedTool.capturesAudio ? 40 : 0))
+                            + (captureControls.selectedTool.hasSelectionControlsRow ? 40 : 0))
         }
         if expanded { return expandedSize }
         if dragPlaceholder { return CGSize(width: geometry.peek.width, height: geometry.safeContentTop + 66) }

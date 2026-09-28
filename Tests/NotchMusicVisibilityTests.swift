@@ -32,7 +32,7 @@ enum NotchMusicVisibilityTests {
         func hideEmbedded() {}
     }
     struct CaptureControls {
-        struct Tool { let capturesAudio = false }
+        struct Tool { let capturesAudio = false; let hasSelectionControlsRow = false }
         let selectedTool = Tool()
         var onSelectionProgressChange: ((Bool) -> Void)?
     }

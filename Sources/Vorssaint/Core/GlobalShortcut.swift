@@ -191,6 +191,9 @@ struct GlobalShortcut: Equatable, Hashable {
                                                  modifiers: [.control, .option, .command])
     static let micMuteDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_M),
                                                modifiers: [.control, .option, .command])
+    // Voice sits beside the recorder's 5 on the same layer.
+    static let voiceRecorderDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_6),
+                                                     modifiers: [.control, .option, .command])
     // W for webcam, on the same free control-option-command layer.
     static let cameraPreviewDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_W),
                                                      modifiers: [.control, .option, .command])
@@ -712,6 +715,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     case snippetLibrary
     case commandBar
     case screenRecorder
+    case voiceRecorder
     case displayBrightnessDecrease
     case displayBrightnessIncrease
     case keyboardBrightnessDecrease
@@ -745,6 +749,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .snippetLibrary: return DefaultsKey.snippetLibraryShortcut
         case .commandBar: return DefaultsKey.commandBarShortcut
         case .screenRecorder: return DefaultsKey.recorderShortcut
+        case .voiceRecorder: return DefaultsKey.voiceShortcut
         case .displayBrightnessDecrease: return DefaultsKey.displayBrightnessDecreaseShortcut
         case .displayBrightnessIncrease: return DefaultsKey.displayBrightnessIncreaseShortcut
         case .keyboardBrightnessDecrease: return DefaultsKey.keyboardBrightnessDecreaseShortcut
@@ -778,6 +783,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .snippetLibrary: return .snippetLibraryDefault
         case .commandBar: return .commandBarDefault
         case .screenRecorder: return .screenRecorderDefault
+        case .voiceRecorder: return .voiceRecorderDefault
         case .displayBrightnessDecrease: return .displayBrightnessDecreaseDefault
         case .displayBrightnessIncrease: return .displayBrightnessIncreaseDefault
         case .keyboardBrightnessDecrease: return .keyboardBrightnessDecreaseDefault
@@ -835,6 +841,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .snippetLibrary: return FeatureStrings.snippets(L10n.shared.language).libraryTitle
         case .commandBar: return FeatureStrings.commandBar(L10n.shared.language).pageTitle
         case .screenRecorder: return FeatureStrings.recorder(L10n.shared.language).pageTitle
+        case .voiceRecorder: return FeatureStrings.voice(L10n.shared.language).toolTitle
         case .displayBrightnessDecrease:
             return FeatureStrings.brightness(L10n.shared.language).displayBrightnessDecrease
         case .displayBrightnessIncrease:
@@ -889,6 +896,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .snippetLibrary: return [DefaultsKey.snippetLibraryEnabled]
         case .commandBar: return [DefaultsKey.commandBarShortcutEnabled]
         case .screenRecorder: return [DefaultsKey.recorderShortcutEnabled]
+        case .voiceRecorder: return [DefaultsKey.voiceShortcutEnabled]
         case .displayBrightnessDecrease, .displayBrightnessIncrease:
             return [DefaultsKey.brightnessControlEnabled, DefaultsKey.displayBrightnessShortcutsEnabled]
         case .keyboardBrightnessDecrease, .keyboardBrightnessIncrease:
@@ -921,7 +929,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .scratchpad: return .scratchpad
         case .snippetLibrary: return .textSnippets
         case .commandBar: return .commandBar
-        case .screenRecorder: return .screenRecorder
+        case .screenRecorder, .voiceRecorder: return .screenRecorder
         case .displayBrightnessDecrease, .displayBrightnessIncrease: return .brightness
         case .keyboardBrightnessDecrease, .keyboardBrightnessIncrease: return .brightness
         case .pointerNextDisplay: return .windowLayout
@@ -1007,7 +1015,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
 
     /// Chooser tools first, in chooser order, then shared history and screenshot extras.
     static let captureDisplayOrder: [GlobalShortcutRole] = [
-        .screenshot, .screenRecorder, .screenOCR, .colorPicker,
+        .screenshot, .screenRecorder, .screenOCR, .colorPicker, .voiceRecorder,
         .recentCaptures, .screenshotFullScreen, .screenshotLastCapture, .screenshotClipboard,
     ]
 

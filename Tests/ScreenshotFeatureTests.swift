@@ -722,7 +722,7 @@ enum ScreenshotFeatureTests {
             }
             for tool in ScreenCaptureTool.allCases {
                 suite.expect(tool.opensDuringRecording(fromShortcut: true, defaults: reopenedDefaults)
-                        == (tool == hiddenTool && tool != .recording),
+                        == (tool == hiddenTool && tool != .recording && tool != .voice),
                        "only \(hiddenTool)'s menu-free shortcut may run over a recording, checked for \(tool)")
                 suite.expect(!tool.opensDuringRecording(fromShortcut: false, defaults: reopenedDefaults),
                        "buttons open the capture menu, so they never run over a recording")
@@ -734,12 +734,12 @@ enum ScreenshotFeatureTests {
                    "turning the setting back on blocks the shortcut during a recording again")
         }
         let recordingOnly: Set<AppFeature> = [.screenRecorder]
-        suite.expect(ScreenCaptureTool.available(isAvailable: recordingOnly.contains) == [.recording],
-               "the capture chooser hides every uninstalled mode")
+        suite.expect(ScreenCaptureTool.available(isAvailable: recordingOnly.contains) == [.recording, .voice],
+               "the capture chooser hides every uninstalled mode, and voice comes with the recorder")
         let captureFeatures: Set<AppFeature> = [.screenshot, .screenRecorder,
                                                 .screenOCR, .colorPicker]
         suite.expect(ScreenCaptureTool.available(isAvailable: captureFeatures.contains)
-                == [.screenshot, .recording, .text, .color],
+                == [.screenshot, .recording, .text, .color, .voice],
                "the capture chooser keeps a stable order for every installed mode")
         let captureSettingsSource = (try? String(
             contentsOfFile: "Sources/Vorssaint/UI/Settings/ScreenCaptureSettings.swift",
@@ -786,12 +786,13 @@ enum ScreenshotFeatureTests {
                     selected: .screenshot,
                     isAvailable: { _ in false }),
                "a capture result is routed only while its selected feature remains installed")
-        suite.expect(ScreenCaptureTool.allCases.map(\.shortcutKey) == ["1", "2", "3", "4"]
+        suite.expect(ScreenCaptureTool.allCases.map(\.shortcutKey) == ["1", "2", "3", "4", "5"]
                 && ScreenCaptureTool.matchingShortcut("1") == .screenshot
                 && ScreenCaptureTool.matchingShortcut("2") == .recording
                 && ScreenCaptureTool.matchingShortcut("3") == .text
                 && ScreenCaptureTool.matchingShortcut("4") == .color
-                && ScreenCaptureTool.matchingShortcut("5") == nil,
+                && ScreenCaptureTool.matchingShortcut("5") == .voice
+                && ScreenCaptureTool.matchingShortcut("6") == nil,
                "number keys select the same capture mode shown in the chooser")
         let liveScreenshotPolicy = ScreenshotSupport.unifiedCapturePolicy(
             for: .screenshot,
@@ -2871,7 +2872,7 @@ enum ScreenshotFeatureTests {
                     == DefaultsKey.screenshotShortcutEnabled,
                "the screenshot tool keeps the old general shortcut's keys as its own")
         suite.expect(ScreenCaptureTool.allCases.map { $0.dedicatedShortcut.role }
-                == [.screenshot, .screenRecorder, .screenOCR, .colorPicker],
+                == [.screenshot, .screenRecorder, .screenOCR, .colorPicker, .voiceRecorder],
                "every capture tool owns a shortcut role, in tool order")
         // The keys a tool registers have to be the ones its settings row writes.
         // Three roles once had a row and no registrar, so the key was recorded
