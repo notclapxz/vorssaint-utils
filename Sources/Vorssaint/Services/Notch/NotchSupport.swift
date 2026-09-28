@@ -440,7 +440,7 @@ enum NotchControlSetupRequirement: Equatable {
 }
 
 enum NotchControlItem: String, CaseIterable, Identifiable {
-    case volume, brightness, music, mixer, keepAwake, timer, calendar, microphone, screenshot, recording, speedTest, panel, commandBar, scratchpad
+    case volume, brightness, music, mixer, keepAwake, timer, calendar, microphone, screenshot, recording, voice, speedTest, panel, commandBar, scratchpad
     static let defaultHidden = "microphone,screenshot,recording,speedTest,panel,commandBar,scratchpad"
     var id: String { rawValue }
 
@@ -452,6 +452,7 @@ enum NotchControlItem: String, CaseIterable, Identifiable {
         case .microphone: return "mic.fill"
         case .screenshot: return "camera.viewfinder"
         case .recording: return "record.circle"
+        case .voice: return "waveform"
         case .speedTest: return "speedometer"
         // The app panel opens as a bubble under the menu bar icon.
         case .panel: return "bubble.middle.top"
@@ -471,7 +472,7 @@ enum NotchControlItem: String, CaseIterable, Identifiable {
         case .keepAwake: return .feature(.keepAwake)
         case .microphone: return .feature(.micMute)
         case .screenshot: return .feature(.screenshot)
-        case .recording: return .feature(.screenRecorder)
+        case .recording, .voice: return .feature(.screenRecorder)
         case .commandBar: return .feature(.commandBar)
         case .scratchpad: return .feature(.scratchpad)
         case .panel: return .none
@@ -491,7 +492,7 @@ enum NotchControlItem: String, CaseIterable, Identifiable {
         case .keepAwake: return AppFeature.keepAwake.isAvailable(in: defaults)
         case .microphone: return AppFeature.micMute.isAvailable(in: defaults)
         case .screenshot: return AppFeature.screenshot.isAvailable(in: defaults)
-        case .recording: return AppFeature.screenRecorder.isAvailable(in: defaults)
+        case .recording, .voice: return AppFeature.screenRecorder.isAvailable(in: defaults)
         case .speedTest: return AppFeature.monitorNetwork.isAvailable(in: defaults) && NotchSupport.modules(in: defaults).contains(.system)
         case .commandBar: return AppFeature.commandBar.isAvailable(in: defaults)
         case .scratchpad: return AppFeature.scratchpad.isAvailable(in: defaults)

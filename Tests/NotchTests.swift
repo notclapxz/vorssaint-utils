@@ -652,8 +652,10 @@ enum NotchTests {
                      "a saved island choice stays configured even if the master switch was never used")
 
         suite.expect(!NotchSupport.isEnabled(in: defaults), "notch is opt-in")
-        suite.expect(NotchSupport.controls(in: defaults) == [.volume, .brightness, .music, .mixer, .keepAwake, .timer, .calendar],
-               "home defaults prioritize playback and everyday system controls")
+        // Voice is shown from the start in this fork: its control is how the
+        // island records a voice, and a hidden one would never be found.
+        suite.expect(NotchSupport.controls(in: defaults) == [.volume, .brightness, .music, .mixer, .keepAwake, .timer, .calendar, .voice],
+               "home defaults prioritize playback and everyday system controls, plus voice")
         defaults.set(false, forKey: DefaultsKey.notchTimerEnabled)
         defaults.set(false, forKey: DefaultsKey.notchCalendarEnabled)
         suite.expect(!NotchSupport.controls(in: defaults).contains(.timer)

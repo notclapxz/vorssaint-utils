@@ -127,6 +127,7 @@ struct NotchControlsView: View {
                 service.perform { ScreenshotService.shared.capture() }
             }
         case .recording: NotchRecorderButton(service: service)
+        case .voice: NotchVoiceButton(service: service)
         case .speedTest:
             NotchActionTile(symbol: item.symbol, title: item.title(l10n)) { service.showMetric(.network) }
         case .panel:
@@ -155,6 +156,7 @@ extension NotchControlItem {
         case .microphone: return l10n.s.micMuteName
         case .screenshot: return FeatureStrings.recentCaptures(l10n.language).screenshot
         case .recording: return FeatureStrings.recorder(l10n.language).pageTitle
+        case .voice: return FeatureStrings.voice(l10n.language).toolTitle
         case .speedTest: return l10n.s.speedTestRun
         case .panel: return FeatureStrings.notch(l10n.language).panel
         case .mixer: return l10n.s.mixerSection
@@ -513,6 +515,19 @@ private struct NotchMicButton: View {
         NotchActionTile(symbol: service.isMuted ? "mic.slash.fill" : "mic.fill",
                         title: service.isMuted ? l10n.s.micUnmuteName : l10n.s.micMuteName,
                         active: service.isMuted, accent: .alert, action: service.toggle)
+    }
+}
+
+private struct NotchVoiceButton: View {
+    let service: NotchService
+    @ObservedObject private var voice = VoiceRecorderService.shared
+    @ObservedObject private var l10n = L10n.shared
+    var body: some View {
+        NotchActionTile(symbol: voice.isRecording ? "stop.circle.fill" : "waveform",
+                        title: FeatureStrings.voice(l10n.language).toolTitle,
+                        active: voice.isRecording, accent: .alert) {
+            service.perform { voice.toggle() }
+        }
     }
 }
 

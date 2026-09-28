@@ -1054,6 +1054,7 @@ final class NotchService: ObservableObject {
             case .microphone: MicMuteService.shared.toggle()
             case .screenshot: perform { ScreenshotService.shared.capture() }
             case .recording: perform { ScreenRecorderService.shared.toggle() }
+            case .voice: perform { VoiceRecorderService.shared.toggle() }
             case .speedTest: showMetric(.network)
             case .panel: openAppPanel()
             case .mixer: select(.mixer)

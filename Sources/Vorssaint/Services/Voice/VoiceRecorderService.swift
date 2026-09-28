@@ -59,6 +59,12 @@ final class VoiceRecorderService: ObservableObject {
 
     // MARK: - Starting
 
+    /// The island's Voice control: one press records, the next one stops.
+    func toggle() {
+        if stopOrCancelActiveCapture() { return }
+        start()
+    }
+
     /// The chooser's Start button. The microphone is asked for before the
     /// countdown, so a permission dialog never eats the seconds to get ready.
     func start() {
