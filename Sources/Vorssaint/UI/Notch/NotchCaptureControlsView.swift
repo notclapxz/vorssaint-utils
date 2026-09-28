@@ -4,7 +4,7 @@
 import SwiftUI
 
 private enum NotchCaptureControl: Hashable {
-    case collapse, close, tool(ScreenCaptureTool), systemAudio, microphone, camera, microphoneChoice, startVoice
+    case collapse, close, tool(ScreenCaptureTool), systemAudio, microphone, camera, teleprompter, microphoneChoice, startVoice
 }
 
 /// The same selection model drives keyboard shortcuts and the screen overlay.
@@ -76,7 +76,7 @@ private struct NotchRecordingAudioOptions: View {
     @ObservedObject private var l10n = L10n.shared
     var focusedControl: FocusState<NotchCaptureControl?>.Binding
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             Toggle(FeatureStrings.recorder(l10n.language).systemAudioTrackLabel, isOn: $options.systemAudio)
                 .focused(focusedControl, equals: .systemAudio)
             Toggle(FeatureStrings.recorder(l10n.language).microphoneTrackLabel, isOn: $options.microphone)
@@ -85,6 +85,8 @@ private struct NotchRecordingAudioOptions: View {
             // chooser moved into the island could never turn the camera on.
             Toggle(FeatureStrings.recorder(l10n.language).cameraTrackLabel, isOn: $options.camera)
                 .focused(focusedControl, equals: .camera)
+            Toggle(FeatureStrings.teleprompter(l10n.language).title, isOn: $options.teleprompter)
+                .focused(focusedControl, equals: .teleprompter)
         }
         .toggleStyle(.switch)
         .tint(.green)

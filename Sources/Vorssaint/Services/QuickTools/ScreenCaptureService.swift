@@ -80,6 +80,7 @@ final class ScreenCaptureService: ObservableObject {
     }
 
     func syncWithPreferences() {
+        TeleprompterService.shared.syncWithPreferences()
         let availableTools = ScreenCaptureTool.available()
         guard !availableTools.isEmpty else {
             toolShortcutRegistrationFailures = []
@@ -113,6 +114,7 @@ final class ScreenCaptureService: ObservableObject {
     }
 
     func suspend() {
+        TeleprompterService.shared.suspend()
         toolHotkeys.values.forEach { $0.unregister() }
         cancelSelection()
     }
@@ -280,6 +282,7 @@ final class ScreenCaptureService: ObservableObject {
             if !handsCameraToRecorder {
                 ScreenRecorderService.shared.previewCamera(false)
             }
+            TeleprompterService.shared.pickerEnded(handsToRecording: handsCameraToRecorder)
             self.route(outcome, selected: options.selectedTool,
                        recorderTracks: options.recorderTracks)
         }
@@ -295,6 +298,17 @@ final class ScreenCaptureService: ObservableObject {
             .combineLatest(options.recorderTracks.$camera)
             .sink { tool, wantsCamera in
                 ScreenRecorderService.shared.previewCamera(tool == .recording && wantsCamera)
+            }
+            .store(in: &cameraPreviewObservers)
+        // The teleprompter follows the same two choices, for the same reason.
+        options.$selectedTool
+            .combineLatest(options.recorderTracks.$teleprompter)
+            .sink { tool, wantsTeleprompter in
+                if tool == .recording && wantsTeleprompter {
+                    TeleprompterService.shared.showForPicker()
+                } else {
+                    TeleprompterService.shared.stopFollowing()
+                }
             }
             .store(in: &cameraPreviewObservers)
     }
@@ -365,5 +379,6 @@ final class ScreenCaptureService: ObservableObject {
         // camera on with nobody watching it.
         cameraPreviewObservers.removeAll()
         ScreenRecorderService.shared.previewCamera(false)
+        TeleprompterService.shared.pickerEnded(handsToRecording: false)
     }
 }

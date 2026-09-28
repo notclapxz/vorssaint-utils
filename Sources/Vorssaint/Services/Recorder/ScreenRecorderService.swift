@@ -19,11 +19,16 @@ final class RecorderSelectionTrackOptions: ObservableObject {
     @Published var camera: Bool {
         didSet { UserDefaults.standard.set(camera, forKey: DefaultsKey.recorderCamera) }
     }
+    /// Not a track: the script read while recording, which never enters the file.
+    @Published var teleprompter: Bool {
+        didSet { UserDefaults.standard.set(teleprompter, forKey: DefaultsKey.recorderTeleprompter) }
+    }
 
     init(defaults: UserDefaults = .standard) {
         systemAudio = defaults.bool(forKey: DefaultsKey.recorderSystemAudio)
         microphone = defaults.bool(forKey: DefaultsKey.recorderMicrophone)
         camera = defaults.bool(forKey: DefaultsKey.recorderCamera)
+        teleprompter = defaults.bool(forKey: DefaultsKey.recorderTeleprompter)
     }
 }
 
@@ -779,6 +784,7 @@ final class ScreenRecorderService: ObservableObject {
                 .map(Int.init))
             chrome.formUnion(indicator.excludedWindowNumbers)
             chrome.formUnion(self.cameraPreview?.excludedWindowNumbers ?? [])
+            chrome.formUnion(TeleprompterService.shared.excludedWindowNumbers)
             if let number = QuickToolHUD.currentWindowNumber { chrome.insert(number) }
             let failure = await session.start(frameRate: frameRate,
                                               capturesSystemAudio: capturesSystemAudio,
@@ -809,6 +815,7 @@ final class ScreenRecorderService: ObservableObject {
     }
 
     private func invalidatePendingStart() {
+        TeleprompterService.shared.recordingDidStop()
         pendingStartGeneration &+= 1
         isAwaitingMicrophone = false
         isAwaitingCamera = false
@@ -833,6 +840,7 @@ final class ScreenRecorderService: ObservableObject {
     }
 
     private func recordingDidStart() {
+        TeleprompterService.shared.recordingDidStart()
         isRecording = true
         isPaused = false
         elapsedSeconds = Int(session?.elapsed(at: CACurrentMediaTime()) ?? 0)
@@ -869,6 +877,7 @@ final class ScreenRecorderService: ObservableObject {
         elapsedSeconds = Int(session.elapsed(at: now))
         indicator?.update(elapsed: RecorderSupport.elapsedLabel(seconds: elapsedSeconds))
         indicator?.update(paused: isPaused)
+        TeleprompterService.shared.recordingDidPause(isPaused)
     }
 
     /// A recording that fills the disk is a much worse failure than one that

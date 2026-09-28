@@ -347,6 +347,8 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Voice/VoiceSupport.swift
         Sources/Vorssaint/Services/Recorder/RecorderTakeRecovery.swift
         Sources/Vorssaint/Core/VoiceStrings.swift
+        Sources/Vorssaint/Core/TeleprompterStrings.swift
+        Sources/Vorssaint/Services/Teleprompter/TeleprompterSupport.swift
         Sources/Vorssaint/Services/Recorder/RecorderCaptureEngine.swift
         Sources/Vorssaint/Core/RecorderExportStrings.swift
         Sources/Vorssaint/Services/Recorder/RecorderComposer.swift

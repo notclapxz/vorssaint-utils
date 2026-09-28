@@ -46,6 +46,10 @@ struct ScreenCaptureSettings: View {
             }
 
             selectedSettings
+
+            if AppFeature.screenRecorder.isAvailable {
+                TeleprompterSettings()
+            }
         }
         .formStyle(.grouped)
         .onAppear { reconcileSelection(withDestination: true) }
@@ -271,6 +275,41 @@ private struct VoiceCaptureSettings: View {
             }
         } header: {
             Text(strings.toolTitle)
+        }
+    }
+}
+
+/// Used by voice and by screen recordings alike, so it sits under whichever
+/// tool is selected rather than inside one of them.
+private struct TeleprompterSettings: View {
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var service = TeleprompterService.shared
+    @AppStorage(DefaultsKey.teleprompterShortcutEnabled) private var enabled = false
+
+    var body: some View {
+        let strings = FeatureStrings.teleprompter(l10n.language)
+        let role = GlobalShortcutRole.teleprompter
+        Section {
+            Button {
+                service.show()
+            } label: {
+                Label(strings.openButton, systemImage: "text.alignleft")
+            }
+            Text(strings.settingsCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(role.title(l10n.s), isOn: $enabled)
+                .onChange(of: enabled) { _, _ in service.syncWithPreferences() }
+            ShortcutPreferenceRow(role: role, isEnabled: enabled) {
+                service.syncWithPreferences()
+            }
+            if enabled, service.shortcutRegistrationFailed {
+                Text(l10n.s.shortcutUnavailable)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        } header: {
+            Text(strings.title)
         }
     }
 }

@@ -157,6 +157,9 @@ final class RecorderPointerSampler {
     }
 
     private func record(_ event: NSEvent, generation: Int) {
+        // A press on the teleprompter is the person handling their script,
+        // not something in the recording worth zooming into.
+        guard !TeleprompterService.shared.covers(screenPoint: NSEvent.mouseLocation) else { return }
         lock.withLock {
             guard running, self.generation == generation else { return }
             guard let time = pauseClock.eventTime(CACurrentMediaTime())

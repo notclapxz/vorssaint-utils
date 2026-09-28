@@ -1922,6 +1922,9 @@ private struct RecorderSelectionTrackControls: View {
             Toggle(isOn: $options.camera) {
                 Label(strings.cameraTrackLabel, systemImage: "video.fill")
             }
+            Toggle(isOn: $options.teleprompter) {
+                Label(FeatureStrings.teleprompter(l10n.language).title, systemImage: "text.alignleft")
+            }
         }
         .toggleStyle(.button)
         .buttonStyle(.bordered)

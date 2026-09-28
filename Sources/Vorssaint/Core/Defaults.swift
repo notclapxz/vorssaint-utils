@@ -674,6 +674,13 @@ enum DefaultsKey {
     /// The unique ID of the microphone voice records with; empty follows
     /// the system's input.
     static let voiceMicrophoneID = "voiceMicrophoneID"
+    static let teleprompterShortcutEnabled = "teleprompterShortcutEnabled"
+    static let teleprompterShortcut = "teleprompterShortcut"
+    /// The last script, so the teleprompter opens on what was being read.
+    static let teleprompterScript = "teleprompterScript"
+    static let teleprompterSpeed = "teleprompterSpeed"
+    /// Whether a screen recording brings the teleprompter along.
+    static let recorderTeleprompter = "recorderTeleprompter"
     static let recorderCountdown = "recorderCountdown"
     static let recorderQuality = "recorderQuality"
     static let recorderFrameRate = "recorderFrameRate"
@@ -1653,6 +1660,11 @@ enum Defaults {
         DefaultsKey.recorderShortcut: GlobalShortcut.screenRecorderDefault.storageValue,
         DefaultsKey.voiceShortcutEnabled: false,
         DefaultsKey.voiceMicrophoneID: "",
+        DefaultsKey.teleprompterShortcutEnabled: false,
+        DefaultsKey.teleprompterShortcut: GlobalShortcut.teleprompterDefault.storageValue,
+        DefaultsKey.teleprompterScript: "",
+        DefaultsKey.teleprompterSpeed: TeleprompterSupport.defaultSpeed,
+        DefaultsKey.recorderTeleprompter: false,
         DefaultsKey.voiceShortcut: GlobalShortcut.voiceRecorderDefault.storageValue,
         DefaultsKey.recorderCountdown: 3,
         DefaultsKey.recorderQuality: RecorderSupport.Quality.balanced.rawValue,

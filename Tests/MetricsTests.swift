@@ -104,6 +104,7 @@ struct MetricsTests {
                 RecorderSampleTimingTests.run(suite)
                 RecorderWriterTests.run(suite)
                 VoiceRecorderTests.run(suite)
+                TeleprompterTests.run(suite)
                 RecorderTakeRecoveryTests.run(suite)
                 RecorderExportChipTests.run { suite.expect($0, $1) }
             }),
