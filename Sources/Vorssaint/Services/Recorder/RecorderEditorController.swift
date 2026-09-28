@@ -616,16 +616,30 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         try? data.write(to: take.editURL, options: .atomic)
     }
 
-    /// The size the current preset will write, for THIS recording.
-    var exportSize: CGSize {
+    /// The whole picture before any export size is applied.
+    var exportCanvas: CGSize {
         guard sourceSize.width > 0 else { return .zero }
         let style = document.resolvedBackdrop
         let padding = style.kind == .none ? 0 : style.padding * 0.18
-        let canvas = RecorderSupport.canvasSize(source: sourceSize,
-                                                padding: padding,
-                                                aspect: document.resolvedAspect,
-                                                cropsToAspect: style.kind == .none)
-        return RecorderSupport.outputSize(source: canvas, quality: document.resolvedQuality)
+        return RecorderSupport.canvasSize(source: sourceSize,
+                                          padding: padding,
+                                          aspect: document.resolvedAspect,
+                                          cropsToAspect: style.kind == .none)
+    }
+
+    /// The size an export with this long side writes, for THIS recording.
+    func exportSize(longSide: Int) -> CGSize {
+        let canvas = exportCanvas
+        guard canvas.width > 0 else { return .zero }
+        let scale = RecorderExportOptions.scale(canvas: canvas,
+                                                qualityScale: document.resolvedQuality.outputScale,
+                                                longSide: longSide)
+        return RecorderExportOptions.outputSize(canvas: canvas, scale: scale)
+    }
+
+    /// The size the current preset and export size will write.
+    var exportSize: CGSize {
+        exportSize(longSide: RecorderExportOptions.storedLongSide)
     }
 
     // MARK: - Cutting

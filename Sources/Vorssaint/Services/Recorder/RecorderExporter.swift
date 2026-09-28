@@ -236,9 +236,11 @@ final class RecorderExporter {
                                                     padding: padding,
                                                     aspect: document.resolvedAspect,
                                                     cropsToAspect: style.kind == .none)
-        let regularSize = RecorderSupport.evenSize(CGSize(
-            width: fullCanvas.width * document.resolvedQuality.outputScale,
-            height: fullCanvas.height * document.resolvedQuality.outputScale))
+        let exportScale = RecorderExportOptions.scale(
+            canvas: fullCanvas,
+            qualityScale: document.resolvedQuality.outputScale,
+            longSide: RecorderExportOptions.storedLongSide)
+        let regularSize = RecorderExportOptions.outputSize(canvas: fullCanvas, scale: exportScale)
         let sharingPlan = sharingBitRateScale.flatMap {
             RecordingSharingSupport.encodingPlan(
                 duration: timelineDuration.seconds,
@@ -248,13 +250,15 @@ final class RecorderExporter {
                 bitRateScale: $0)
         }
         if sharingBitRateScale != nil, sharingPlan == nil { return .tooLargeForSharing }
-        let outputFrameRate = sharingPlan?.frameRate ?? frameRate
+        let outputFrameRate = sharingPlan?.frameRate
+            ?? RecorderExportOptions.frameRate(source: frameRate,
+                                               cap: RecorderExportOptions.storedFrameRateCap)
         let outputScale: CGFloat
         if let sharingPlan {
             outputScale = min(1, min(sharingPlan.size.width / max(1, fullCanvas.width),
                                      sharingPlan.size.height / max(1, fullCanvas.height)))
         } else {
-            outputScale = document.resolvedQuality.outputScale
+            outputScale = exportScale
         }
 
         // The export preset is folded into the canvas the composer draws, so
@@ -272,8 +276,8 @@ final class RecorderExporter {
         let composer = plan.map { RecorderComposer(plan: $0) }
         let outputSize = composer?.canvasSize
             ?? sharingPlan?.size
-            ?? RecorderSupport.outputSize(source: RecorderSupport.evenSize(sourceSize),
-                                          quality: document.resolvedQuality)
+            ?? RecorderExportOptions.outputSize(canvas: RecorderSupport.evenSize(sourceSize),
+                                                scale: exportScale)
         guard let composition = await RecorderComposer.videoComposition(
             track: timelineVideo,
             asset: timeline,

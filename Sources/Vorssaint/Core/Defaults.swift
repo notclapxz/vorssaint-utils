@@ -681,6 +681,10 @@ enum DefaultsKey {
     static let teleprompterSpeed = "teleprompterSpeed"
     /// Whether a screen recording brings the teleprompter along.
     static let recorderTeleprompter = "recorderTeleprompter"
+    /// Longest side of an exported video; 0 keeps the recording's own.
+    static let recorderExportLongSide = "recorderExportLongSide"
+    /// Frame rate ceiling of an exported video; 0 keeps the recording's own.
+    static let recorderExportFrameRateCap = "recorderExportFrameRateCap"
     static let recorderCountdown = "recorderCountdown"
     static let recorderQuality = "recorderQuality"
     static let recorderFrameRate = "recorderFrameRate"
@@ -1665,6 +1669,8 @@ enum Defaults {
         DefaultsKey.teleprompterScript: "",
         DefaultsKey.teleprompterSpeed: TeleprompterSupport.defaultSpeed,
         DefaultsKey.recorderTeleprompter: false,
+        DefaultsKey.recorderExportLongSide: 0,
+        DefaultsKey.recorderExportFrameRateCap: 0,
         DefaultsKey.voiceShortcut: GlobalShortcut.voiceRecorderDefault.storageValue,
         DefaultsKey.recorderCountdown: 3,
         DefaultsKey.recorderQuality: RecorderSupport.Quality.balanced.rawValue,

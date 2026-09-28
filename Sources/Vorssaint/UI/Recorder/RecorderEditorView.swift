@@ -446,14 +446,64 @@ struct RecorderEditorView: View {
                     Text(strings.qualityHigh).tag(RecorderSupport.Quality.high.rawValue)
                 }
                 .pickerStyle(.inline)
+                // Sizes come from what was recorded, so each one reads as the
+                // file it makes and none adds bars to a window or an area.
+                Picker(exportOptionsStrings.resolutionLabel, selection: longSideBinding) {
+                    ForEach(RecorderExportOptions.offeredLongSides(
+                        canvas: model.exportCanvas,
+                        qualityScale: model.document.resolvedQuality.outputScale), id: \.self) { side in
+                        Text(resolutionTitle(side)).tag(side)
+                    }
+                }
+                .pickerStyle(.inline)
+                Picker(exportOptionsStrings.frameRateLabel, selection: $exportFrameRateCap) {
+                    Text(exportOptionsStrings.asRecorded).tag(0)
+                    Text("30 fps").tag(30)
+                }
+                .pickerStyle(.inline)
             } label: {
-                Label(qualityTitle + "  " + outputSizeLabel, systemImage: "slider.horizontal.3")
+                Label(qualityTitle + "  " + outputSizeLabel + frameRateSuffix,
+                      systemImage: "slider.horizontal.3")
                     .font(.system(size: 12, weight: .medium))
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .screenshotSafeHelp(strings.qualityLabel)
         }
+    }
+
+    @AppStorage(DefaultsKey.recorderExportLongSide) private var exportLongSide = 0
+    @AppStorage(DefaultsKey.recorderExportFrameRateCap) private var exportFrameRateCap = 0
+
+    private var exportOptionsStrings: RecorderExportOptionsStrings {
+        FeatureStrings.recorderExportOptions(l10n.language)
+    }
+
+    /// A stored size this recording is too small for reads as its own size.
+    private var longSideBinding: Binding<Int> {
+        Binding(get: {
+                    let offered = RecorderExportOptions.offeredLongSides(
+                        canvas: model.exportCanvas,
+                        qualityScale: model.document.resolvedQuality.outputScale)
+                    return offered.contains(exportLongSide) ? exportLongSide : 0
+                },
+                set: { exportLongSide = $0 })
+    }
+
+    private func resolutionTitle(_ side: Int) -> String {
+        let size = model.exportSize(longSide: side)
+        let name: String
+        switch side {
+        case 1920: name = "1080p"
+        case 1280: name = "720p"
+        default: name = exportOptionsStrings.originalSize
+        }
+        return "\(name) · \(Int(size.width)) × \(Int(size.height))"
+    }
+
+    private var frameRateSuffix: String {
+        RecorderExportOptions.sanitizedFrameRateCap(exportFrameRateCap) > 0
+            ? "  \(exportFrameRateCap) fps" : ""
     }
 
     private var qualityBinding: Binding<String> {
