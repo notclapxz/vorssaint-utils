@@ -252,6 +252,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Before any window closes on the way out, so an open editor keeps
+        // its recording for the next launch instead of deleting it.
+        RecorderTakeRecovery.appWillQuit()
         if inputSourceRestorationPending { return .terminateLater }
         guard CommandBarService.shared.hasBorrowedInputSource else { return .terminateNow }
         inputSourceRestorationPending = true
@@ -266,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        RecorderTakeRecovery.appWillQuit()
         isTerminating = true
         CommandBarService.shared.restoreBorrowedInputSource()
         if AppFeature.notch.isAvailable { NotchService.shared.stop(restoreCapture: false) }

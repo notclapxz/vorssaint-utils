@@ -1732,8 +1732,11 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         model.pause()
         model.cancelExport()
-        // The recording lives exactly as long as its editor.
-        RecorderTakeStore.shared.delete(model.take)
+        // The recording lives exactly as long as its editor, except when the
+        // app is quitting: then it waits to be reopened on the next launch.
+        if !RecorderTakeRecovery.isQuitting {
+            RecorderTakeStore.shared.delete(model.take)
+        }
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
             self.keyMonitor = nil

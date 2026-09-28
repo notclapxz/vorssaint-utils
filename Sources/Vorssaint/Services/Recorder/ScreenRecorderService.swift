@@ -389,7 +389,29 @@ final class ScreenRecorderService: ObservableObject {
             teardownSurfaces()
             return
         }
+        reopenLeftoverTakes()
         sweepTakes()
+    }
+
+    private var didReopenLeftoverTakes = false
+
+    /// Once per launch, and before the sweep: a recording a quit or a crash
+    /// left behind comes back in its editor, with its edits, rather than
+    /// aging into the sweep while nobody can see it.
+    private func reopenLeftoverTakes() {
+        guard !didReopenLeftoverTakes else { return }
+        didReopenLeftoverTakes = true
+        var owned = Set(editors.map(\.takeID))
+        if let session { owned.insert(session.take.id) }
+        let store = RecorderTakeStore.shared
+        let takes = store.takes()
+        let described = takes.map {
+            (id: $0.id, hasMaster: FileManager.default.fileExists(atPath: $0.videoURL.path))
+        }
+        let reopen = Set(RecorderTakeRecovery.takesToReopen(described, owned: owned))
+        for take in takes where reopen.contains(take.id) {
+            openEditor(with: take)
+        }
     }
 
     /// Uninstalling the feature in the hub has to take everything off the
