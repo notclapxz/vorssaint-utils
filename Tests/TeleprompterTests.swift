@@ -50,6 +50,17 @@ enum TeleprompterTests {
         suite.expect(samplerSource.contains(
                     "guard !TeleprompterService.shared.covers(screenPoint: NSEvent.mouseLocation) else { return }"),
                "moving or pressing the teleprompter while recording never becomes an automatic zoom")
+        let captureSource = (try? String(
+            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenCaptureService.swift",
+            encoding: .utf8)) ?? ""
+        let voiceSource = (try? String(
+            contentsOfFile: "Sources/Vorssaint/Services/Voice/VoiceRecorderService.swift",
+            encoding: .utf8)) ?? ""
+        suite.expect(captureSource.contains("(tool == .recording || tool == .voice) && wantsTeleprompter")
+                && captureSource.contains("cancelSelection(handsTeleprompterToRecording: options.recorderTracks.teleprompter)")
+                && voiceSource.contains("TeleprompterService.shared.recordingDidStart()")
+                && voiceSource.contains("TeleprompterService.shared.recordingDidPause(isPaused)"),
+               "a voice recording brings the script along, plays it and pauses it like a screen recording")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.recorderTeleprompter] as? Bool == false,
                "recordings bring the teleprompter only when asked")
     }

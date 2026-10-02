@@ -50,6 +50,10 @@ struct NotchCaptureControlsView: View {
                 HStack(spacing: 10) {
                     VoiceMicrophoneMenu()
                         .focused($focusedControl, equals: .microphoneChoice)
+                    TeleprompterSwitch(tracks: options.recorderTracks)
+                        .toggleStyle(.switch)
+                        .tint(.green)
+                        .fixedSize()
                     Button {
                         options.onStartVoice?()
                     } label: {

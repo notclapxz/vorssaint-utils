@@ -141,3 +141,17 @@ private struct TeleprompterReader: View {
         }
     }
 }
+
+/// The teleprompter switch shared by the recorder's tracks and voice's panel.
+/// It observes the choice itself: the chooser observing only its own state
+/// would leave the switch drawn the old way after a click.
+struct TeleprompterSwitch: View {
+    @ObservedObject var tracks: RecorderSelectionTrackOptions
+    @ObservedObject private var l10n = L10n.shared
+
+    var body: some View {
+        Toggle(isOn: $tracks.teleprompter) {
+            Label(FeatureStrings.teleprompter(l10n.language).title, systemImage: "text.alignleft")
+        }
+    }
+}

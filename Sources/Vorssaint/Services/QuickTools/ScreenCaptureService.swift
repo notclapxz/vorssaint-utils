@@ -252,7 +252,9 @@ final class ScreenCaptureService: ObservableObject {
             screenCaptureOptions: options)
         options.onStartVoice = { [weak self, weak options] in
             guard let self, let options, self.options === options else { return }
-            self.cancelSelection()
+            // Start ends the chooser, but a script switched on for this voice
+            // recording stays up for it instead of leaving with the chooser.
+            self.cancelSelection(handsTeleprompterToRecording: options.recorderTracks.teleprompter)
             VoiceRecorderService.shared.start()
         }
         if options.controlsInNotch {
@@ -304,7 +306,7 @@ final class ScreenCaptureService: ObservableObject {
         options.$selectedTool
             .combineLatest(options.recorderTracks.$teleprompter)
             .sink { tool, wantsTeleprompter in
-                if tool == .recording && wantsTeleprompter {
+                if (tool == .recording || tool == .voice) && wantsTeleprompter {
                     TeleprompterService.shared.showForPicker()
                 } else {
                     TeleprompterService.shared.stopFollowing()
@@ -363,7 +365,7 @@ final class ScreenCaptureService: ObservableObject {
         }
     }
 
-    private func cancelSelection() {
+    private func cancelSelection(handsTeleprompterToRecording: Bool = false) {
         NotchService.shared.endCaptureControls()
         options?.onPresentationReady = nil
         options?.onStartVoice = nil
@@ -379,6 +381,6 @@ final class ScreenCaptureService: ObservableObject {
         // camera on with nobody watching it.
         cameraPreviewObservers.removeAll()
         ScreenRecorderService.shared.previewCamera(false)
-        TeleprompterService.shared.pickerEnded(handsToRecording: false)
+        TeleprompterService.shared.pickerEnded(handsToRecording: handsTeleprompterToRecording)
     }
 }

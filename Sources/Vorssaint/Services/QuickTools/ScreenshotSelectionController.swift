@@ -1950,6 +1950,9 @@ private struct VoiceStartControls: View {
         HStack(spacing: 8) {
             VoiceMicrophoneMenu()
                 .buttonStyle(.bordered)
+            TeleprompterSwitch(tracks: options.recorderTracks)
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
             Button {
                 options.onStartVoice?()
             } label: {

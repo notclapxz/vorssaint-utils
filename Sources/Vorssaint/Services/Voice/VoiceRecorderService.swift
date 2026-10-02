@@ -119,6 +119,7 @@ final class VoiceRecorderService: ObservableObject {
     }
 
     private func cancelPendingStart() {
+        TeleprompterService.shared.recordingDidStop()
         generation &+= 1
         isAwaitingMicrophone = false
         countdown?.cancel()
@@ -136,6 +137,7 @@ final class VoiceRecorderService: ObservableObject {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("voice-\(UUID().uuidString).m4a")
         guard let writer = VoiceWriter(url: url, pauseClock: clock) else {
+            TeleprompterService.shared.recordingDidStop()
             QuickToolHUD.show(icon: "waveform", message: recorderStrings.recordFailed)
             return
         }
@@ -175,6 +177,7 @@ final class VoiceRecorderService: ObservableObject {
     }
 
     private func recordingDidStart() {
+        TeleprompterService.shared.recordingDidStart()
         isRecording = true
         isPaused = false
         elapsedSeconds = 0
@@ -207,6 +210,7 @@ final class VoiceRecorderService: ObservableObject {
         elapsedSeconds = Int(pauseClock.elapsed(at: now))
         indicator?.update(elapsed: RecorderSupport.elapsedLabel(seconds: elapsedSeconds))
         indicator?.update(paused: isPaused)
+        TeleprompterService.shared.recordingDidPause(isPaused)
     }
 
     // MARK: - Stopping
@@ -236,7 +240,10 @@ final class VoiceRecorderService: ObservableObject {
         }
     }
 
+    /// Every way a voice recording ends, finished or failed, passes here, and
+    /// the script it brought along goes with it.
     private func endRecordingSurfaces() {
+        TeleprompterService.shared.recordingDidStop()
         isRecording = false
         isPaused = false
         elapsedTimer?.invalidate()
@@ -277,7 +284,10 @@ final class VoiceRecorderService: ObservableObject {
         QuickToolHUD.show(icon: "waveform", message: String(format: strings.savedHUDFormat, folder))
     }
 
+    /// Also the end of any script brought along: without the microphone there
+    /// is no recording for it to follow.
     private func reportMicrophoneUnavailable() {
+        TeleprompterService.shared.recordingDidStop()
         QuickToolHUD.show(icon: "mic.slash", message: recorderStrings.microphoneUnavailableHUD)
     }
 
